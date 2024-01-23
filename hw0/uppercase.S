@@ -16,17 +16,17 @@ _start:
 
         # Your code here!
         loop: 
-        #code for inverting lower case to upper case characters 
-        
-        lb a1,0(a0) #load byte from string  
-        beq a1,0,end_program  #check for terminating null character
-        blt a1,97,goto  #already an upper case character
-        bgt a1,122,goto # not a character 
-        sub a1,a1,32 #convert t0 uppercase 
-        sb a1,0(a0)
+                #code for inverting lower case to upper case characters 
+                
+                lb a1,0(a0) #load byte from string  
+                beq a1,33,end_program  #check for terminating null character
+                blt a1,97,goto  #already an upper case character
+                bgt a1,122,goto # not a character 
+                sub a1,a1,32 #convert t0 uppercase 
+                sb a1,0(a0)
 
-        goto: addi a0,a0,1
-        j loop
+                goto: addi a0,a0,1
+                j loop
 
 end_program:
         # jump here when you're done
