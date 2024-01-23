@@ -13,16 +13,20 @@ fromhost: .byte 0
 _start:
         # Load the address of the input string into a0
         la a0, input_string
+        li a2, 0
+        li a3, 97
+        li a4, 122
+        li a5, 32
 
         # Your code here!
         loop: 
                 #code for inverting lower case to upper case characters 
                 
                 lb a1, 0(a0) #load byte from string  
-                beq a1, 0, end_program  #check for terminating null character
-                blt a1, 97, goto  #already an upper case character
-                bgt a1, 122, goto # not a character 
-                sub a1, a1, 32 #convert t0 uppercase 
+                beq a1, a2, end_program  #check for terminating null character
+                blt a1, a3, goto  #already an upper case character
+                bgt a1, a4, goto # not a character 
+                addi a1, a1, -32 #convert t0 uppercase 
                 sb a1, 0(a0)
 
                 goto: addi a0, a0, 1
