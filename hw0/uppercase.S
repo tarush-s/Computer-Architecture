@@ -16,7 +16,6 @@ _start:
         li a2, 0
         li a3, 97
         li a4, 122
-        li a5, 32
 
         # Your code here!
         loop: 
