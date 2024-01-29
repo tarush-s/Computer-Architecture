@@ -37,8 +37,8 @@ module divu_1iter (
         dividend = dividend << 1;
     }
     */
-    intial 
-    begin
+
+    intial begin
         assign o_remainder = (i_remainder << 1) | ((i_dividend >> 31) & 1'b1);
         if(o_remainder < i_divisor)
             begin
@@ -58,12 +58,12 @@ module divu_1iter (
             o_remainder = (o_remainder << 1) | ((o_dividend >> 31) & 1'b1);
             if(o_remainder < i_divisor)
                 begin
-                    o_quotient = o_quotient << 1;
+                    o_quotient = (o_quotient << 1);
                 end
             else
                 begin
                     o_quotient = (o_quotient << 1) | 1'b1;
-                    o_remainder = o_remainder - i_divisor;
+                    o_remainder = (o_remainder - i_divisor);
                 end
             o_dividend = o_dividend << 1;
         end 
