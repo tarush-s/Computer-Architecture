@@ -37,7 +37,27 @@ module divu_1iter (
         dividend = dividend << 1;
     }
     */
-
-    // TODO: your code here
+    
+    always_comb 
+    begin 
+        for(int i = 0; i < 32; i = i + 1)
+        begin
+            i_remainder = (i_remainder << 1) | ((i_dividend >> 31) & 0x1);
+            if(i_remainder < i_divisor)
+                begin
+                    i_quotient = i_quotient << 1;
+                end
+            else
+                begin
+                    i_quotient = (i_quotient << 1) | 0x1;
+                    i_remainder = i_remainder - i_divisor;
+                end
+            i_dividend = i_dividend << 1;
+        end 
+    end 
+    
+    assign o_dividend = i_dividend;
+    assign o_remainder = i_remainder;
+    assign o_quotient = i_quotient;
 
 endmodule
