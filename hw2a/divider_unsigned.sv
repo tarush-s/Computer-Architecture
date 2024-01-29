@@ -39,33 +39,34 @@ module divu_1iter (
     */
     intial 
     begin
-        o_remainder = (i_remainder << 1) | ((i_dividend >> 31) & 1'b1);
+        assign o_remainder = (i_remainder << 1) | ((i_dividend >> 31) & 1'b1);
         if(o_remainder < i_divisor)
             begin
-                o_quotient = i_quotient << 1;
+                assign o_quotient = i_quotient << 1;
             end
         else
             begin
-                o_quotient = (i_quotient << 1) | 1'b1;
-                o_remainder = i_remainder - i_divisor;
+                assign o_quotient = (i_quotient << 1) | 1'b1;
+                assign o_remainder = i_remainder - i_divisor;
             end
-        o_dividend = i_dividend << 1;
+        assign o_dividend = i_dividend << 1;
     end
 
-
-    for(int i = 1; i < 32; i = i + 1)
-    begin
-        o_remainder = (o_remainder << 1) | ((o_dividend >> 31) & 1'b1);
-        if(o_remainder < i_divisor)
-            begin
-                o_quotient = o_quotient << 1;
-            end
-        else
-            begin
-                o_quotient = (o_quotient << 1) | 1'b1;
-                o_remainder = o_remainder - i_divisor;
-            end
-        o_dividend = o_dividend << 1;
-    end 
+    always_comb begin
+        for(int i = 1; i < 32; i = i + 1)
+        begin
+            o_remainder = (o_remainder << 1) | ((o_dividend >> 31) & 1'b1);
+            if(o_remainder < i_divisor)
+                begin
+                    o_quotient = o_quotient << 1;
+                end
+            else
+                begin
+                    o_quotient = (o_quotient << 1) | 1'b1;
+                    o_remainder = o_remainder - i_divisor;
+                end
+            o_dividend = o_dividend << 1;
+        end 
+    end
 
 endmodule
