@@ -38,9 +38,9 @@ module divu_1iter (
     }
     */
 
-wire [31:0] tmp_quotient = i_quotient;
-wire [31:0] tmp_remainder = i_remainder;
-wire [31:0] tmp_dividend = i_dividend;
+reg [31:0] tmp_quotient = i_quotient;
+reg [31:0] tmp_remainder = i_remainder;
+reg [31:0] tmp_dividend = i_dividend;
 
 
 
