@@ -37,45 +37,32 @@ module divu_1iter (
         dividend = dividend << 1;
     }
     */
-    reg [31:0] out_dividend;
-    reg [31:0] out_remainder; 
-    reg [31:0] out_quotient; 
-    reg [31:0] comp_divisor;
-    
-    initial begin
-        comp_divisor = i_divisor;
-        out_remainder = (i_remainder << 1) | ((i_dividend >> 31) & 32'h0000_0001);
-        if(out_remainder < comp_divisor)
-            begin
-                out_quotient = i_quotient << 1;
-            end
-        else
-            begin
-                out_quotient = (i_quotient << 1) | {1'b1, {31{1'b0}}};
-                out_remainder = i_remainder - comp_divisor;
-            end
-        out_dividend = i_dividend << 1;
-    end
+logic [31:0] remainder = 0;
+logic [31:0] quotient = 0;
+logic [31:0] dividend = 0;
 
-    always_comb begin
-        for(int i = 1; i < 32; i = i + 1)
-        begin
-            out_remainder = (out_remainder << 1) | ((out_dividend >> 31) & 32'h0000_0001);
-            if(out_remainder < comp_divisor)
-                begin
-                    out_quotient = (out_quotient << 1);
-                end
-            else
-                begin
-                    out_quotient = (out_quotient << 1) | 1'b1;
-                    out_remainder = (out_remainder - comp_divisor);
-                end
-            out_dividend = out_dividend << 1;
+always_comb begin 
+    dividend = i_dividend;
+    remainder = i_remainder;
+    quotient = i_quotient; 
+end
+
+always_comb begin 
+    for(int i=0; i<32; i++) begin 
+        remainder = (remainder << 1) | ((dividend >> 31) & 1'b1);
+        if(remainder < i_divisor) begin 
+            quotient = (quotient << 1) | 1'b1;
         end 
-    end
+        else begin 
+            quotient = (quotient << 1) | 1'b1; 
+            remainder = remainder - i_divisor;
+        end 
+        dividend = dividend << 1;
+    end 
+end 
 
-    assign o_dividend = out_dividend;
-    assign o_remainder = out_remainder;
-    assign o_quotient = out_quotient;
+assign o_dividend = dividend;
+assign o_quotient = quotient;
+assign o_remainder = remainder;
 
 endmodule
