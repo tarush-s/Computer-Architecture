@@ -50,7 +50,7 @@ always_comb begin
             tmp_dividend = i_dividend;
         end 
         tmp_msb = (tmp_dividend >> 31) & 1'b1;
-        tmp_remainder = (tmp_remainder << 1) | {31{1'b0},tmp_msb};
+        tmp_remainder = (tmp_remainder << 1) | {{31{1'b0}},tmp_msb};
         if(tmp_remainder < i_divisor) begin 
             tmp_quotient = (tmp_quotient << 1);
         end 
