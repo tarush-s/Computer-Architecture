@@ -43,7 +43,7 @@ reg [31:0] tmp_dividend;
 
 always_comb begin 
     for(int i=0; i<32; i++) begin 
-        if( i = 0) begin 
+        if( i == 0) begin 
             tmp_quotient = i_quotient;
             tmp_remainder = i_remainder;
             tmp_dividend = i_dividend;
