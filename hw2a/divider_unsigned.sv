@@ -37,32 +37,23 @@ module divu_1iter (
         dividend = dividend << 1;
     }
     */
-reg [31:0] remainder;
-reg [31:0] quotient;
-reg [31:0] dividend;
-
-initial begin 
-    dividend = i_dividend;
-    remainder = i_remainder;
-    quotient = i_quotient; 
-end
 
 always_comb begin 
     for(int i=0; i<32; i++) begin 
-        remainder = (remainder << 1) | ((dividend >> 31) & 32'h0000_0001);
-        if(remainder < i_divisor) begin 
-            quotient = (quotient << 1);
+        i_remainder = (i_remainder << 1) | ((i_dividend >> 31) & 32'h0000_0001);
+        if(i_remainder < i_divisor) begin 
+            i_quotient = (i_quotient << 1);
         end 
         else begin 
-            quotient = (quotient << 1) | 32'h0000_0001; 
-            remainder = remainder - i_divisor;
+            i_quotient = (i_quotient << 1) | 32'h0000_0001; 
+            i_remainder = i_remainder - i_divisor;
         end 
-        dividend = dividend << 1;
+        i_dividend = i_dividend << 1;
     end 
 end 
 
-assign o_dividend = dividend;
-assign o_quotient = quotient;
-assign o_remainder = remainder;
+assign o_dividend = i_dividend;
+assign o_quotient = i_quotient;
+assign o_remainder = i_remainder;
 
 endmodule
