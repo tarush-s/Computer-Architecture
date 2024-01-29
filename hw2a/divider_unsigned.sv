@@ -38,22 +38,28 @@ module divu_1iter (
     }
     */
 
+wire [31:0] tmp_quotient = i_quotient;
+wire [31:0] tmp_remainder = i_remainder;
+wire [31:0] tmp_dividend = i_dividend;
+
+
+
 always_comb begin 
     for(int i=0; i<32; i++) begin 
-        i_remainder = (i_remainder << 1) | ((i_dividend >> 31) & 32'h0000_0001);
-        if(i_remainder < i_divisor) begin 
-            i_quotient = (i_quotient << 1);
+        tmp_remainder = (tmp_remainder << 1) | ((tmp_dividend >> 31) & 32'h0000_0001);
+        if(tmp_remainder < i_divisor) begin 
+            tmp_quotient = (tmp_quotient << 1);
         end 
         else begin 
-            i_quotient = (i_quotient << 1) | 32'h0000_0001; 
-            i_remainder = i_remainder - i_divisor;
+            tmp_quotient = (tmp_quotient << 1) | 32'h0000_0001; 
+            tmp_remainder = tmp_remainder - i_divisor;
         end 
-        i_dividend = i_dividend << 1;
+        tmp_dividend = tmp_dividend << 1;
     end 
 end 
 
-assign o_dividend = i_dividend;
-assign o_quotient = i_quotient;
-assign o_remainder = i_remainder;
+assign o_dividend = tmp_dividend;
+assign o_quotient = tmp_quotient;
+assign o_remainder = tmp_remainder;
 
 endmodule
