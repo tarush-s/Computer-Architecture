@@ -38,7 +38,7 @@ module divu_1iter (
     }
     */
 
-    intial begin
+    initial begin
         assign o_remainder = (i_remainder << 1) | ((i_dividend >> 31) & 1'b1);
         if(o_remainder < i_divisor)
             begin
