@@ -37,11 +37,11 @@ module divu_1iter (
         dividend = dividend << 1;
     }
     */
-logic [31:0] remainder = 0;
-logic [31:0] quotient = 0;
-logic [31:0] dividend = 0;
+logic [31:0] remainder;
+logic [31:0] quotient;
+logic [31:0] dividend;
 
-always_comb begin 
+initial begin 
     dividend = i_dividend;
     remainder = i_remainder;
     quotient = i_quotient; 
