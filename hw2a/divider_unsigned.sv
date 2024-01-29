@@ -40,6 +40,7 @@ module divu_1iter (
 reg [31:0] tmp_quotient;
 reg [31:0] tmp_remainder;
 reg [31:0] tmp_dividend;
+wire tmp_msb;
 
 always_comb begin 
     for(int i=0; i<32; i++) begin 
@@ -48,7 +49,8 @@ always_comb begin
             tmp_remainder = i_remainder;
             tmp_dividend = i_dividend;
         end 
-        tmp_remainder = (tmp_remainder << 1) | ((tmp_dividend >> 31) & 32'h0000_0001);
+        tmp_msb = (tmp_dividend >> 31) & 1'b1;
+        tmp_remainder = (tmp_remainder << 1) | {31{1'b0},tmp_msb};
         if(tmp_remainder < i_divisor) begin 
             tmp_quotient = (tmp_quotient << 1);
         end 
