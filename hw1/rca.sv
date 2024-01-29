@@ -44,7 +44,8 @@ endmodule
  * LEDs) */
 module rca4(input wire  [7:0] SWITCH,
             output wire [7:0] LED);
-   wire cout0, ignored;
+   wire cout0 = 1'b0; 
+   wire ignored = 1'b0;
 
    fulladder2 r0(.cin(1'b1), .a(SWITCH[1:0]), .b(SWITCH[5:4]), .s(LED[1:0]), .cout(cout0));
    fulladder2 r3(.cin(cout0), .a(SWITCH[3:2]), .b(SWITCH[7:6]), .s(LED[3:2]), .cout(ignored));
