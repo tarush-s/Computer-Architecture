@@ -10,14 +10,14 @@ sys.path.append(str(p))
 import main_codecheck
 
 def objectIsLegal(obj):
-    """Returns a tuple. First parameter is True if this object describes a legal code construct, False if an illegal one. 
-Second parameter is True if we should continue to iterate into descendent objects, False if we should not."""
     
     if 'tag' not in obj:
         return (True,True)
     tag = obj['tag']
+    if tag in ["kDataType","kForCondition","kLoopHeader","kDimensionRange","kDimensionScalar"]:
+        return (True,False)
     text = obj.get('text', None)
-    if (tag == "SystemTFIdentifier" and text == "$fopen") or tag == "+":
+    if (tag == "SystemTFIdentifier" and text == "$fopen") or tag == "+" or tag == "-":
         return (False,True)
     return (True,True)
 
