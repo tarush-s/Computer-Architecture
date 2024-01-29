@@ -37,15 +37,17 @@ module divu_1iter (
         dividend = dividend << 1;
     }
     */
-
-reg [31:0] tmp_quotient = i_quotient;
-reg [31:0] tmp_remainder = i_remainder;
-reg [31:0] tmp_dividend = i_dividend;
-
-
+reg [31:0] tmp_quotient;
+reg [31:0] tmp_remainder;
+reg [31:0] tmp_dividend;
 
 always_comb begin 
     for(int i=0; i<32; i++) begin 
+        if( i = 0) begin 
+            tmp_quotient = i_quotient;
+            tmp_remainder = i_remainder;
+            tmp_dividend = i_dividend;
+        end 
         tmp_remainder = (tmp_remainder << 1) | ((tmp_dividend >> 31) & 32'h0000_0001);
         if(tmp_remainder < i_divisor) begin 
             tmp_quotient = (tmp_quotient << 1);
