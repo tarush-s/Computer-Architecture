@@ -4,41 +4,6 @@
 
 // quotient = dividend / divisor
 
-module divider_unsigned (
-    input  wire [31:0] i_dividend,
-    input  wire [31:0] i_divisor,
-    output wire [31:0] o_remainder,
-    output wire [31:0] o_quotient
-);
-
-    // TODO: your code here
-    wire[31:0] temp_output_dividend;
-    wire[31:0] temp_output_remainder;
-    wire[31:0] temp_output_quotient;
-    wire[31:0] temp_input_remainder;
-    wire[31:0] temp_input_quotient;
-
-    for(int i = 0; i < 32; i++) begin 
-        if( i == 0)begin 
-            temp_input_remainder = 32'b0;
-            temp_input_quotient = 32'b0;
-            ivu_1iter a0 (.i_dividend(i_dividend), .i_divisor(i_divisor), .i_remainder(temp_input_remainder), 
-                          .i_quotient(temp_input_quotient), .o_dividend(temp_output_dividend), .o_remainder(temp_output_remainder)
-                          .o_quotient(temp_output_quotient));
-        end
-        else begin
-            ivu_1iter a1 (.i_dividend(temp_output_dividend), .i_divisor(i_divisor), .i_remainder(temp_output_remainder)
-                          .i_quotient(temp_output_quotient), o_dividend(temp_output_dividend), o_remainder(temp_output_remainder)
-                          .o_quotient(temp_output_quotient));
-        end
-    end 
-
-    assign o_remainder = temp_output_remainder;
-    assign o_quotient = temp_output_quotient; 
-
-endmodule
-
-
 module divu_1iter (
     input  wire [31:0] i_dividend,
     input  wire [31:0] i_divisor,
@@ -85,3 +50,50 @@ assign o_quotient = tmp_quotient;
 assign o_remainder = tmp_remainder;
 
 endmodule
+
+module divider_unsigned (
+    input  wire [31:0] i_dividend,
+    input  wire [31:0] i_divisor,
+    output wire [31:0] o_remainder,
+    output wire [31:0] o_quotient
+);
+
+    // TODO: your code here
+    wire [31:0] temp_output_dividend[31:0];
+    wire [31:0] temp_output_remainder[31:0];
+    wire [31:0] temp_output_quotient[31:0];
+    wire [31:0] temp_input_remainder;
+    wire [31:0] temp_input_quotient;
+
+    always_comb begin
+        for(int i = 0; i < 32; i++) begin 
+            if( i == 0)begin 
+                temp_input_remainder = 32'b0;
+                temp_input_quotient = 32'b0;
+                divu_1iter a1(.i_dividend(i_dividend), 
+                             .i_divisor(i_divisor), 
+                             .i_remainder(temp_input_remainder), 
+                             .i_quotient(temp_input_quotient), 
+                             .o_dividend(temp_output_dividend[0]), 
+                             .o_remainder(temp_output_remainder[0]), 
+                             .o_quotient(temp_output_quotient[0]));
+            end
+            else begin
+                divu_1iter a2(.i_dividend(temp_output_dividend[i-1]), 
+                             .i_divisor(i_divisor), 
+                             .i_remainder(temp_output_remainder[i-1]),
+                             .i_quotient(temp_output_quotient[i-1]), 
+                             .o_dividend(temp_output_dividend[i]), 
+                             .o_remainder(temp_output_remainder[i]), 
+                             .o_quotient(temp_output_quotient[i]));
+            end
+        end 
+    end
+
+    assign o_remainder = temp_output_remainder[31];
+    assign o_quotient = temp_output_quotient[31]; 
+
+endmodule
+
+
+
