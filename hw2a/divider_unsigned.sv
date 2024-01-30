@@ -42,22 +42,19 @@ reg [31:0] tmp_remainder;
 reg [31:0] tmp_dividend;
 
 always_comb begin 
-    for(int i=0; i<32; i++) begin 
-        if( i == 0) begin 
-            tmp_quotient = i_quotient;
-            tmp_remainder = i_remainder;
-            tmp_dividend = i_dividend;
-        end 
-        tmp_remainder = (tmp_remainder << 1) | (tmp_dividend >> 31) & 32'b1;
-        if(tmp_remainder < i_divisor) begin 
-            tmp_quotient = (tmp_quotient << 1);
-        end 
-        else begin 
-            tmp_quotient = (tmp_quotient << 1) | 32'b1; 
-            tmp_remainder = tmp_remainder - i_divisor;
-        end 
-        tmp_dividend = tmp_dividend << 1;
+    tmp_quotient = i_quotient;
+    tmp_remainder = i_remainder;
+    tmp_dividend = i_dividend;
+
+    tmp_remainder = (tmp_remainder << 1) | (tmp_dividend >> 31) & 32'b1;
+    if(tmp_remainder < i_divisor) begin 
+        tmp_quotient = (tmp_quotient << 1);
     end 
+    else begin 
+        tmp_quotient = (tmp_quotient << 1) | 32'b1; 
+        tmp_remainder = tmp_remainder - i_divisor;
+    end 
+    tmp_dividend = tmp_dividend << 1;
 end 
 
 assign o_dividend = tmp_dividend;
