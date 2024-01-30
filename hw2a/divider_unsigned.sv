@@ -48,12 +48,12 @@ always_comb begin
             tmp_remainder = i_remainder;
             tmp_dividend = i_dividend;
         end 
-        tmp_remainder = (tmp_remainder << 1) | (tmp_dividend >> 31) & 32'h0000_0001;
+        tmp_remainder = (tmp_remainder << 1) | (tmp_dividend >> 31) & 32'b1;
         if(tmp_remainder < i_divisor) begin 
             tmp_quotient = (tmp_quotient << 1);
         end 
         else begin 
-            tmp_quotient = (tmp_quotient << 1) | 32'h0000_0001; 
+            tmp_quotient = (tmp_quotient << 1) | 32'b1; 
             tmp_remainder = tmp_remainder - i_divisor;
         end 
         tmp_dividend = tmp_dividend << 1;
