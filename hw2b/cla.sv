@@ -28,6 +28,13 @@ module gp4(input wire [3:0] gin, pin,
 
    // TODO: your code here
 
+   assign gout = (| gin);
+   assign pout = (& pin);
+
+   assign cout[0] = (gin[0] | (pin[0] & cin));
+   assign cout[1] = (gin[1] | pin[1] & ((gin[0] | (pin[0] & cin))));
+   assign cout[2] = (gin[2] | pin[2] & ((gin[1] | pin[1] & ((gin[0] | (pin[0] & cin))))));
+
 endmodule
 
 /** Same as gp4 but for an 8-bit window instead */
@@ -37,6 +44,11 @@ module gp8(input wire [7:0] gin, pin,
            output wire [6:0] cout);
 
    // TODO: your code here
+
+   assign gout = (| gin);
+   assign pout = (& pin);
+
+   
 
 endmodule
 
