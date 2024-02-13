@@ -25,6 +25,20 @@ module RegFile (
   logic [`REG_SIZE] regs[NumRegs];
 
   // TODO: your code here
+  assign rs1_data = regs[rs1];
+  assign rs2_data = regs[rs2];
+
+  integer i; 
+  always@(posedge clk) begin 
+    if(rst == 1'b1) begin 
+      for(i = 0; i < NumRegs; i++)
+        regs[i] <=0;
+    end
+    else begin 
+      if((we == 1'b1) && (rd != 0)) 
+        regs[rd] <= rd_data;  
+      end  
+  end
 
 endmodule
 
@@ -194,6 +208,7 @@ module DatapathSingleCycle (
     case (insn_opcode)
       OpLui: begin
         // TODO: start here by implementing lui
+        
       end
       default: begin
         illegal_insn = 1'b1;
