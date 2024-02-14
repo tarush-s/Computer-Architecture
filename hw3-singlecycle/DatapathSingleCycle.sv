@@ -84,10 +84,15 @@ module DatapathSingleCycle (
   wire [20:0] imm_j;
   assign {imm_j[20], imm_j[10:1], imm_j[11], imm_j[19:12], imm_j[0]} = {insn_from_imem[31:12], 1'b0};
 
+  // U - Immidiates 
+  wire [19:0] imm_u; 
+  assign imm_u = insn_from_imem[31:12];
+
   wire [`REG_SIZE] imm_i_sext = {{20{imm_i[11]}}, imm_i[11:0]};
   wire [`REG_SIZE] imm_s_sext = {{20{imm_s[11]}}, imm_s[11:0]};
   wire [`REG_SIZE] imm_b_sext = {{19{imm_b[12]}}, imm_b[12:0]};
   wire [`REG_SIZE] imm_j_sext = {{11{imm_j[20]}}, imm_j[20:0]};
+  wire [`REG_SIZE] imm_u_ext = {{12{1'b0}},imm_u[19:0]};
 
   // opcodes - see section 19 of RiscV spec
   localparam bit [`OPCODE_SIZE] OpLoad = 7'b00_000_11;
@@ -201,6 +206,13 @@ module DatapathSingleCycle (
   end
 
   logic illegal_insn;
+  logic [4:0] rd; 
+  logic [`REG_SIZE] rd_data;
+  logic [4:0] rs1;
+  logic [`REG_SIZE] rs1_data;
+  logic [4:0] rs2;
+  logic [`REG_SIZE] rs2_data;
+  logic we;
 
   always_comb begin
     illegal_insn = 1'b0;
@@ -208,13 +220,27 @@ module DatapathSingleCycle (
     case (insn_opcode)
       OpLui: begin
         // TODO: start here by implementing lui
-        
+        rd = insn_rd;
+        rd_data = (imm_u_ext << 12);
+        rs1 = 0;
+        rs2 = 0;
+        we = 1'b1;
       end
       default: begin
         illegal_insn = 1'b1;
       end
     endcase
   end
+
+  RegFile rf(.rd(rd),
+              .rd_data(rd_data),
+              .rs1(rs1),
+              .rs1_data(rs1_data),
+              .rs2(rs2),
+              .rs2_data(rs2_data),
+              .clk(clk),
+              .we(we),
+              .rst(rst));
 
 endmodule
 
