@@ -9,6 +9,15 @@
 `include "../hw2a/divider_unsigned.sv"
 `include "../hw2b/cla.sv"
 
+module mux2_1 (
+  input wire [31:0] A, 
+  input wire [31:0] B, 
+  input wire sel, 
+  output wire [31:0] out
+); 
+  assign out = (sel == 1) ? A:B;
+endmodule 
+
 module RegFile (
     input logic [4:0] rd,
     input logic [`REG_SIZE] rd_data,
@@ -213,6 +222,14 @@ module DatapathSingleCycle (
   logic [4:0] rs2;
   logic [`REG_SIZE] rs2_data;
   logic we;
+  logic [31:0] extendout;
+ 
+  logic [31:0] a; 
+  logic [31:0] b; 
+  logic cin; 
+  wire [31:0] sum;
+
+  logic sel; 
 
   always_comb begin
     illegal_insn = 1'b0;
@@ -221,16 +238,39 @@ module DatapathSingleCycle (
       OpLui: begin
         // TODO: start here by implementing lui
         rd = insn_rd;
-        rd_data = (imm_u_ext << 12);
+        extendout = (imm_u_ext << 12);
         rs1 = 0;
         rs2 = 0;
         we = 1'b1;
+        sel = 1'b0;
       end
+      OpAuipc: begin 
+      // code for I type instructions
+        
+        if(insn_funct3 == 3'b000) begin 
+        // addi instruction 
+        rd = insn_rd;
+        rd_data = sum;
+        rs1 = insn_rs1;
+        rs2 = 0;
+        we = 1'b1;
+        a = rs1_data; 
+        b = imm_i_sext;
+        cin = 1'b0;
+        sel = 1'b1;
+        end
+
+      end 
       default: begin
         illegal_insn = 1'b1;
       end
     endcase
   end
+
+  mux2_1 regin(.A(sum), 
+                .B(extendout),
+                .sel(sel),
+                .out(rd_data));
 
   RegFile rf(.rd(rd),
               .rd_data(rd_data),
@@ -241,6 +281,11 @@ module DatapathSingleCycle (
               .clk(clk),
               .we(we),
               .rst(rst));
+
+  cla alu(.a(a),
+          .b(b),
+          .cin(cin),
+          .sum(sum));
 
 endmodule
 
