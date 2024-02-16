@@ -7,7 +7,8 @@
 `define OPCODE_SIZE 6:0
 
 `include "../hw2a/divider_unsigned.sv"
-`include "../hw2b/cla.sv"
+//`include "../hw2b/cla.sv"
+`include "cla.sv"
 
 module mux2_1 (
   input wire [31:0] A, 
@@ -15,7 +16,7 @@ module mux2_1 (
   input wire sel, 
   output wire [31:0] out
 ); 
-  assign out = (sel == 1) ? A:B;
+  assign out = (sel == 1'b1) ? A : B;
 endmodule 
 
 module RegFile (
@@ -98,6 +99,7 @@ module DatapathSingleCycle (
   assign imm_u = insn_from_imem[31:12];
 
   wire [`REG_SIZE] imm_i_sext = {{20{imm_i[11]}}, imm_i[11:0]};
+  wire [`REG_SIZE] imm_i_ext = {{20{1'b0}}, imm_i[11:0]};
   wire [`REG_SIZE] imm_s_sext = {{20{imm_s[11]}}, imm_s[11:0]};
   wire [`REG_SIZE] imm_b_sext = {{19{imm_b[12]}}, imm_b[12:0]};
   wire [`REG_SIZE] imm_j_sext = {{11{imm_j[20]}}, imm_j[20:0]};
@@ -111,7 +113,7 @@ module DatapathSingleCycle (
   localparam bit [`OPCODE_SIZE] OpMiscMem = 7'b00_011_11;
   localparam bit [`OPCODE_SIZE] OpJal = 7'b11_011_11;
 
-  localparam bit [`OPCODE_SIZE] OpRegImm = 7'b00_100_11;
+  localparam bit [`OPCODE_SIZE] OpRegImm  = 7'b00_100_11;
   localparam bit [`OPCODE_SIZE] OpRegReg = 7'b01_100_11;
   localparam bit [`OPCODE_SIZE] OpEnviron = 7'b11_100_11;
 
@@ -196,6 +198,7 @@ module DatapathSingleCycle (
       pcCurrent <= 32'd0;
     end else begin
       pcCurrent <= pcNext;
+      pcCurrent <= pcCurrent + 32'd4;
     end
   end
   assign pc_to_imem = pcCurrent;
@@ -214,6 +217,7 @@ module DatapathSingleCycle (
     end
   end
 
+  // Wires for Reg File
   logic illegal_insn;
   logic [4:0] rd; 
   logic [`REG_SIZE] rd_data;
@@ -222,55 +226,141 @@ module DatapathSingleCycle (
   logic [4:0] rs2;
   logic [`REG_SIZE] rs2_data;
   logic we;
-  logic [31:0] extendout;
- 
-  logic [31:0] a; 
-  logic [31:0] b; 
+  // Wires for ALU (CLA Adder)
   logic cin; 
-  wire [31:0] sum;
-
-  logic sel; 
+  logic [`REG_SIZE] sum;
+  // Sel line for MUX 
+  logic sel;
+  logic [`REG_SIZE] rd_regfile; 
+  logic [`REG_SIZE] CLA_A;
+  logic [`REG_SIZE] CLA_B; 
 
   always_comb begin
     illegal_insn = 1'b0;
-
+    rd = insn_rd;
+    rs1 = insn_rs1;
+    rs2 = insn_rs2;
+    cin = 1'b0;
+    CLA_A = rs1_data;
+    CLA_B = rs2_data;
+    we = 1'b1;
     case (insn_opcode)
       OpLui: begin
         // TODO: start here by implementing lui
-        rd = insn_rd;
-        extendout = (imm_u_ext << 12);
-        rs1 = 0;
-        rs2 = 0;
-        we = 1'b1;
-        sel = 1'b0;
-      end
-      OpAuipc: begin 
-      // code for I type instructions
-        
-        if(insn_funct3 == 3'b000) begin 
-        // addi instruction 
-        rd = insn_rd;
-        rd_data = sum;
-        rs1 = insn_rs1;
-        rs2 = 0;
-        we = 1'b1;
-        a = rs1_data; 
-        b = imm_i_sext;
-        cin = 1'b0;
-        sel = 1'b1;
+        if(rd == 5'b0) begin 
+          rd_data = 0;
+        end  
+        else begin
+          rd_data = (imm_u_ext << 12);
         end
-
+      end
+      OpRegImm: begin 
+      // code for I type instructions      
+        if(insn_addi == 1'b1) begin 
+        // addi instruction 
+          CLA_B = imm_i_sext;
+          rd_data = sum;
+        end
+        else if (insn_slti == 1'b1) begin
+          // slti instruction 
+          if(imm_i_sext > rs1_data)
+            rd_data = 32'b1;
+          else
+            rd_data = 32'b0;
+        end
+        else if(insn_sltiu == 1'b1) begin
+          // sltiu instruction 
+          if(imm_i_ext > rs1_data)
+            rd_data = 32'b1;
+          else
+            rd_data = 32'b0;
+        end  
+        else if(insn_xori == 1'b1) begin 
+          // xori instruction
+          rd_data = rs1_data ^ imm_s_sext;
+        end 
+        else if(insn_ori == 1'b1) begin
+          // ori instruction 
+          rd_data = rs1_data | imm_s_sext;
+        end
+        else if(insn_andi == 1'b1) begin
+          // andi instruction 
+          rd_data = rs1_data & imm_s_sext;
+        end
+        else if(insn_slli == 1'b1) begin
+          // slli instruction 
+          rd_data = (rs1_data << (imm_i[4:0]));
+        end
+        else if(insn_srli == 1'b1) begin
+          // slri instruction 
+          rd_data = (rs1_data >> (imm_i[4:0]));
+        end
+        else if(insn_srai == 1'b1) begin
+          // srai instruction 
+          rd_data = (rs1_data >>> (imm_i[4:0]));
+        end
+        else begin 
+          illegal_insn = 1'b1;
+        end 
       end 
+      OpRegReg: begin
+        if(insn_add == 1'b1) begin 
+          CLA_A = rs1_data;
+          CLA_B = rs2_data;
+          rd_data = sum;
+        end
+        else if(insn_sub == 1'b1) begin 
+          CLA_A = rs1_data;
+          CLA_B = ~rs2_data;
+          cin = 1'b1;
+          rd_data = sum;
+        end
+        else if(insn_sll == 1'b1) begin 
+          rd_data = rs1_data << rs2_data[4:0];
+        end
+        else if(insn_slt == 1'b1) begin 
+          rd_data = (rs1_data < rs2_data)? 32'b1:32'b0;
+        end
+        else if(insn_sltu == 1'b1) begin 
+          rd_data = (rs1_data < rs2_data)? 32'b1:32'b0;
+        end
+        else if(insn_xor == 1'b1) begin 
+          rd_data = rs1_data ^ rs2_data;
+        end
+        else if(insn_srl == 1'b1) begin 
+          rd_data = rs1_data >> rs2_data[4:0];
+        end
+        else if(insn_sra == 1'b1) begin 
+          rd_data = rs1_data >>> rs2_data[4:0];
+        end
+        else if(insn_or == 1'b1) begin 
+          rd_data = rs1_data | rs2_data;
+        end
+        else if(insn_and == 1'b1) begin 
+          rd_data = rs1_data & rs2_data;
+        end
+        else begin 
+          illegal_insn = 1'b1;
+        end                  
+      end 
+      // OpBranch: begin 
+      //   if(insn_beq == 1'b1) begin 
+      //     if(rs1_data == rs2_data) 
+      //       pcNext = (pcNext + (imm_b_sext << 1));
+      //     else
+      //       pcNext = 32'b0;
+      //   end  
+      // end 
       default: begin
         illegal_insn = 1'b1;
       end
     endcase
   end
 
-  mux2_1 regin(.A(sum), 
-                .B(extendout),
-                .sel(sel),
-                .out(rd_data));
+  cla alu(.a(CLA_A),
+          .b(CLA_B),
+          .cin(cin),
+          .sum(sum));
 
   RegFile rf(.rd(rd),
               .rd_data(rd_data),
@@ -281,11 +371,6 @@ module DatapathSingleCycle (
               .clk(clk),
               .we(we),
               .rst(rst));
-
-  cla alu(.a(a),
-          .b(b),
-          .cin(cin),
-          .sum(sum));
 
 endmodule
 
