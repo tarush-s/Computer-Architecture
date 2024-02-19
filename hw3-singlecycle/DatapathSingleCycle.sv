@@ -216,7 +216,7 @@ module DatapathSingleCycle (
     end
   end
 
-  // Wires for Reg File
+  // Control Signals for Reg File
   logic illegal_insn;
   logic [4:0] rd; 
   logic [`REG_SIZE] rd_data;
@@ -225,18 +225,26 @@ module DatapathSingleCycle (
   logic [4:0] rs2;
   logic [`REG_SIZE] rs2_data;
   logic we;
-  // Wires for ALU (CLA Adder)
+  // Control Signals for ALU (CLA Adder)
   logic cin; 
   logic [`REG_SIZE] sum;
-  // Sel line for MUX 
+  // Control Signals for MUX 
   logic sel;
   logic [`REG_SIZE] rd_regfile; 
   logic [`REG_SIZE] CLA_A;
   logic [`REG_SIZE] CLA_B; 
   logic halt_signal;
   logic [`REG_SIZE] pc_value;
-  // data memeory control signals 
+  // Control Signals for data memeory  
   logic [`REG_SIZE] address_datamemory;
+  logic [`REG_SIZE] data_store;
+  logic [3:0] we_datamem;
+  logic [63:0] mulitply_result;
+  // Control Signals for divider
+  logic [`REG_SIZE] dividend;
+  logic [`REG_SIZE] divisor;
+  logic [`REG_SIZE] remainder;
+  logic [`REG_SIZE] quotient;
 
   always_latch begin
     // assign default values to control signals
@@ -251,30 +259,36 @@ module DatapathSingleCycle (
     halt_signal = 1'b0;
     pc_value = 32'b0;
     address_datamemory = 32'b0;
+    data_store = 32'b0;
+    we_datamem = 4'b0;
+    dividend = 32'b0;
+    divisor = 32'b0;
+    remainder = 32'b0;
+    quotient = 32'b0;
 
     case (insn_opcode)
       OpBranch: begin 
-        if(insn_beq == 1'b1) begin 
+        if(insn_beq) begin 
           if(rs1_data == rs2_data) 
             pc_value = (pc_value + (imm_b_sext << 1));
         end
-        else if(insn_bne == 1'b1)begin
+        else if(insn_bne)begin
           if(rs1_data != rs2_data) 
             pc_value = (pc_value + (imm_b_sext << 1)); 
         end  
-        else if(insn_blt == 1'b1)begin // recheck
+        else if(insn_blt)begin // recheck
           if(rs1_data < rs2_data) 
             pc_value = (pc_value + (imm_b_sext << 1));
         end
-        else if(insn_bge == 1'b1)begin // recheck
+        else if(insn_bge)begin // recheck
           if(rs1_data >= rs2_data) 
             pc_value = (pc_value + (imm_b_sext << 1));
         end 
-        else if(insn_bltu == 1'b1)begin 
+        else if(insn_bltu)begin 
           if(rs1_data < rs2_data) 
             pc_value = (pc_value + (imm_b_sext << 1));
         end
-        else if(insn_bgeu == 1'b1)begin 
+        else if(insn_bgeu)begin 
           if(rs1_data >= rs2_data) 
             pc_value = (pc_value + (imm_b_sext << 1));
         end 
@@ -282,6 +296,26 @@ module DatapathSingleCycle (
           pc_value = 32'b0;
         end       
       end 
+      // OpStore: begin
+      //   if(insn_sb == 1'b1)begin
+      //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
+      //     data_store = {24'b0,rs2_data[7:0]};
+      //     we_datamem = 4'b0001;
+      //   end
+      //   else if(insn_sh == 1'b1)begin
+      //     address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
+      //     data_store = {{16{1'b0}},rs2_data[15:0]};
+      //     we_datamem = 4'b0011;
+      //   end
+      //   else if(insn_sw == 1'b1)begin 
+      //     address_datamemory = (rs1_data + imm_i_sext[31:0]);
+      //     data_store = rs2_data;
+      //     we_datamem = 4'b1111;
+      //   end
+      //   else begin 
+      //     illegal_insn = 1'b1;
+      //   end        
+      // end   
       // OpLoad: begin //recheck 
       //   if(insn_lb == 1'b1) begin
       //     rd_data = load_data_from_dmem; 
@@ -289,7 +323,7 @@ module DatapathSingleCycle (
       //   end  
       //   else if(insn_lh)begin 
       //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {{15{imm_i_sext[15]}},imm_i_sext[15:0]});
+      //     address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
       //   end
       //   else if(insn_lw)begin 
       //     rd_data = load_data_from_dmem; 
@@ -301,7 +335,7 @@ module DatapathSingleCycle (
       //   end 
       //   else if(insn_lhu)begin 
       //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {{15{imm_i_sext[15]}},imm_i_sext[15:0]});
+      //     address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
       //   end  
       //   else begin
       //     illegal_insn = 1'b1; 
@@ -323,46 +357,46 @@ module DatapathSingleCycle (
       end
       OpRegImm: begin 
       // code for I type instructions      
-        if(insn_addi == 1'b1) begin 
+        if(insn_addi) begin 
         // addi instruction 
           CLA_B = imm_i_sext;
           rd_data = sum;
         end
-        else if (insn_slti == 1'b1) begin // recheck
+        else if (insn_slti) begin // recheck
           // slti instruction 
           if(imm_i_sext > rs1_data)
             rd_data = 32'b1;
           else
             rd_data = 32'b0;
         end
-        else if(insn_sltiu == 1'b1) begin
+        else if(insn_sltiu) begin
           // sltiu instruction 
           if(imm_i_ext > rs1_data)
             rd_data = 32'b1;
           else
             rd_data = 32'b0;
         end  
-        else if(insn_xori == 1'b1) begin 
+        else if(insn_xori) begin 
           // xori instruction
           rd_data = rs1_data ^ imm_s_sext;
         end 
-        else if(insn_ori == 1'b1) begin
+        else if(insn_ori) begin
           // ori instruction 
           rd_data = rs1_data | imm_s_sext;
         end
-        else if(insn_andi == 1'b1) begin
+        else if(insn_andi) begin
           // andi instruction 
           rd_data = rs1_data & imm_s_sext;
         end
-        else if(insn_slli == 1'b1) begin
+        else if(insn_slli) begin
           // slli instruction 
           rd_data = (rs1_data << (imm_i[4:0]));
         end
-        else if(insn_srli == 1'b1) begin
+        else if(insn_srli) begin
           // slri instruction 
           rd_data = (rs1_data >> (imm_i[4:0]));
         end
-        else if(insn_srai == 1'b1) begin
+        else if(insn_srai) begin
           // srai instruction 
           rd_data = (rs1_data >>> (imm_i[4:0]));
         end
@@ -371,41 +405,77 @@ module DatapathSingleCycle (
         end 
       end 
       OpRegReg: begin
-        if(insn_add == 1'b1) begin 
+        if(insn_add ) begin 
           CLA_A = rs1_data;
           CLA_B = rs2_data;
           rd_data = sum;
         end
-        else if(insn_sub == 1'b1) begin 
+        else if(insn_sub) begin 
           CLA_A = rs1_data;
           CLA_B = ~rs2_data;
           cin = 1'b1;
           rd_data = sum;
         end
-        else if(insn_sll == 1'b1) begin 
+        else if(insn_sll) begin 
           rd_data = rs1_data << rs2_data[4:0];
         end
-        else if(insn_slt == 1'b1) begin  // recheck
+        else if(insn_slt) begin  // recheck
           rd_data = (rs1_data < rs2_data)? 32'b1:32'b0;
         end
-        else if(insn_sltu == 1'b1) begin 
+        else if(insn_sltu) begin 
           rd_data = (rs1_data < rs2_data)? 32'b1:32'b0;
         end
-        else if(insn_xor == 1'b1) begin 
+        else if(insn_xor) begin 
           rd_data = rs1_data ^ rs2_data;
         end
-        else if(insn_srl == 1'b1) begin 
+        else if(insn_srl) begin 
           rd_data = rs1_data >> rs2_data[4:0];
         end
-        else if(insn_sra == 1'b1) begin 
+        else if(insn_sra) begin 
           rd_data = rs1_data >>> rs2_data[4:0];
         end
-        else if(insn_or == 1'b1) begin 
+        else if(insn_or) begin 
           rd_data = rs1_data | rs2_data;
         end
-        else if(insn_and == 1'b1) begin 
+        else if(insn_and) begin 
           rd_data = rs1_data & rs2_data;
         end
+        else if(insn_mul)begin 
+          mulitply_result = (rs1_data * rs2_data);
+          rd_data = mulitply_result[31:0];
+        end 
+        else if(insn_mulh)begin //recheck
+          mulitply_result = (rs1_data * rs2_data);
+          rd_data = mulitply_result[63:32];
+        end  
+        else if(insn_mulhsu)begin //recheck
+          mulitply_result = (rs1_data * rs2_data);
+          rd_data = mulitply_result[63:32];
+        end
+        else if(insn_mulhu)begin //recheck
+          mulitply_result = (rs1_data * rs2_data);
+          rd_data = mulitply_result[63:32];
+        end
+        else if(insn_div)begin //check 
+          dividend = rs1_data; 
+          divisor = rs2_data;
+          rd_data = quotient;
+        end
+        else if(insn_divu)begin 
+          dividend = rs1_data; 
+          divisor = rs2_data;
+          rd_data = quotient;        
+        end
+        else if (insn_rem)begin //check
+          dividend = rs1_data; 
+          divisor = rs2_data;
+          rd_data = remainder;
+        end 
+        else if(insn_remu)begin
+          dividend = rs1_data; 
+          divisor = rs2_data;
+          rd_data = remainder;
+        end  
         else begin 
           illegal_insn = 1'b1;
         end                  
@@ -416,9 +486,16 @@ module DatapathSingleCycle (
     endcase
   end
 
+  assign store_data_to_dmem = data_store;
+  assign store_we_to_dmem = we_datamem;
   assign addr_to_dmem = address_datamemory;
   assign halt = halt_signal;
   assign pc_to_imem = pcCurrent + pc_value;
+
+  divider_unsigned A1(.i_dividend(dividend),
+                      .i_divisor(divisor),
+                      .o_quotient(quotient),
+                      .o_remainder(remainder));
 
   cla alu(.a(CLA_A),
           .b(CLA_B),
