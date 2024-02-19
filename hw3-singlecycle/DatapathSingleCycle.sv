@@ -109,15 +109,15 @@ module DatapathSingleCycle (
   localparam bit [`OPCODE_SIZE] OpLoad = 7'b00_000_11;
   localparam bit [`OPCODE_SIZE] OpStore = 7'b01_000_11;
   localparam bit [`OPCODE_SIZE] OpBranch = 7'b11_000_11;
-  localparam bit [`OPCODE_SIZE] OpJalr = 7'b11_001_11;
-  localparam bit [`OPCODE_SIZE] OpMiscMem = 7'b00_011_11;
-  localparam bit [`OPCODE_SIZE] OpJal = 7'b11_011_11;
+  localparam bit [`OPCODE_SIZE] OpJalr = 7'b11_001_11;  
+  localparam bit [`OPCODE_SIZE] OpMiscMem = 7'b00_011_11; //left
+  localparam bit [`OPCODE_SIZE] OpJal = 7'b11_011_11; 
 
   localparam bit [`OPCODE_SIZE] OpRegImm  = 7'b00_100_11;
   localparam bit [`OPCODE_SIZE] OpRegReg = 7'b01_100_11;
   localparam bit [`OPCODE_SIZE] OpEnviron = 7'b11_100_11;
 
-  localparam bit [`OPCODE_SIZE] OpAuipc = 7'b00_101_11;
+  localparam bit [`OPCODE_SIZE] OpAuipc = 7'b00_101_11; //left
   localparam bit [`OPCODE_SIZE] OpLui = 7'b01_101_11;
 
   wire insn_lui = insn_opcode == OpLui;
@@ -198,9 +198,9 @@ module DatapathSingleCycle (
       pcCurrent <= 32'd0;
     end else begin
       pcCurrent <= pcNext;
-      pcCurrent <= pcCurrent + 32'd4;
     end
   end
+  assign pc_to_imem = pcCurrent;
 
   // cycle/insn_from_imem counters
   logic [`REG_SIZE] cycles_current, num_insns_current;
@@ -229,14 +229,11 @@ module DatapathSingleCycle (
   logic cin; 
   logic [`REG_SIZE] sum;
   // Control Signals for MUX 
-  logic sel;
-  logic [`REG_SIZE] rd_regfile; 
   logic [`REG_SIZE] CLA_A;
   logic [`REG_SIZE] CLA_B; 
   logic halt_signal;
-  logic [`REG_SIZE] pc_value;
   // Control Signals for data memeory  
-  logic [`REG_SIZE] address_datamemory;
+  reg [`REG_SIZE] address_datamemory;
   logic [`REG_SIZE] data_store;
   logic [3:0] we_datamem;
   logic [63:0] mulitply_result;
@@ -245,102 +242,74 @@ module DatapathSingleCycle (
   logic [`REG_SIZE] divisor;
   logic [`REG_SIZE] remainder;
   logic [`REG_SIZE] quotient;
+  // control signals for branch
+  logic branch_taken;
 
-  always_latch begin
+  always_comb begin
     // assign default values to control signals
     illegal_insn = 1'b0;
     rd = insn_rd;
     rs1 = insn_rs1;
     rs2 = insn_rs2;
+    rd_data = 32'b0;
     cin = 1'b0;
     CLA_A = rs1_data;
     CLA_B = rs2_data;
     we = 1'b1;
     halt_signal = 1'b0;
-    pc_value = 32'b0;
     address_datamemory = 32'b0;
     data_store = 32'b0;
     we_datamem = 4'b0;
     dividend = 32'b0;
     divisor = 32'b0;
-    remainder = 32'b0;
-    quotient = 32'b0;
+    branch_taken = 1'b0;
+    mulitply_result = 64'b0;
+    pcNext = 32'b0;
 
     case (insn_opcode)
       OpBranch: begin 
+        branch_taken = 1'b1;
         if(insn_beq) begin 
           if(rs1_data == rs2_data) 
-            pc_value = (pc_value + (imm_b_sext << 1));
+            pcNext = (pcCurrent + (imm_b_sext << 1));
+          else  
+            pcNext = pcCurrent + 32'd4;
         end
+        
         else if(insn_bne)begin
           if(rs1_data != rs2_data) 
-            pc_value = (pc_value + (imm_b_sext << 1)); 
+            pcNext = (pcCurrent + (imm_b_sext << 1)); 
+          else  
+            pcNext = pcCurrent + 32'd4;
         end  
         else if(insn_blt)begin // recheck
           if(rs1_data < rs2_data) 
-            pc_value = (pc_value + (imm_b_sext << 1));
+            pcNext = (pcCurrent + (imm_b_sext << 1));
+          else  
+            pcNext = pcCurrent + 32'd4;
         end
         else if(insn_bge)begin // recheck
           if(rs1_data >= rs2_data) 
-            pc_value = (pc_value + (imm_b_sext << 1));
+            pcNext = (pcCurrent + (imm_b_sext << 1));
+          else  
+            pcNext = pcCurrent + 32'd4;
         end 
         else if(insn_bltu)begin 
-          if(rs1_data < rs2_data) 
-            pc_value = (pc_value + (imm_b_sext << 1));
+          if(rs1_data < $unsigned(rs2_data)) 
+            pcNext = (pcCurrent + (imm_b_sext << 1));
+          else  
+            pcNext = pcCurrent + 32'd4;
         end
         else if(insn_bgeu)begin 
-          if(rs1_data >= rs2_data) 
-            pc_value = (pc_value + (imm_b_sext << 1));
+          if(rs1_data >= $unsigned(rs2_data)) 
+            pcNext = (pcCurrent + (imm_b_sext << 1));
+          else  
+            pcNext = pcCurrent + 32'd4;
         end 
         else begin 
-          pc_value = 32'b0;
+          pcNext = pcCurrent + 32'd4;
         end       
       end 
-      // OpStore: begin
-      //   if(insn_sb == 1'b1)begin
-      //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
-      //     data_store = {24'b0,rs2_data[7:0]};
-      //     we_datamem = 4'b0001;
-      //   end
-      //   else if(insn_sh == 1'b1)begin
-      //     address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
-      //     data_store = {{16{1'b0}},rs2_data[15:0]};
-      //     we_datamem = 4'b0011;
-      //   end
-      //   else if(insn_sw == 1'b1)begin 
-      //     address_datamemory = (rs1_data + imm_i_sext[31:0]);
-      //     data_store = rs2_data;
-      //     we_datamem = 4'b1111;
-      //   end
-      //   else begin 
-      //     illegal_insn = 1'b1;
-      //   end        
-      // end   
-      // OpLoad: begin //recheck 
-      //   if(insn_lb == 1'b1) begin
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
-      //   end  
-      //   else if(insn_lh)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
-      //   end
-      //   else if(insn_lw)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {imm_i_sext[31:0]});
-      //   end 
-      //   else if(insn_lbu)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
-      //   end 
-      //   else if(insn_lhu)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
-      //   end  
-      //   else begin
-      //     illegal_insn = 1'b1; 
-      //   end 
-      // end 
       OpEnviron: begin
          if(insn_ecall == 1'b1) begin
           halt_signal = 1'b1;
@@ -348,12 +317,12 @@ module DatapathSingleCycle (
       end
       OpLui: begin
         // TODO: start here by implementing lui
-        if(rd == 5'b0) begin 
-          rd_data = 0;
-        end  
-        else begin
+        // if(rd == 5'b0) begin 
+        //   rd_data = 0;
+        // end  
+        // else begin
           rd_data = (imm_u_ext << 12);
-        end
+        //end
       end
       OpRegImm: begin 
       // code for I type instructions      
@@ -406,8 +375,6 @@ module DatapathSingleCycle (
       end 
       OpRegReg: begin
         if(insn_add ) begin 
-          CLA_A = rs1_data;
-          CLA_B = rs2_data;
           rd_data = sum;
         end
         else if(insn_sub) begin 
@@ -419,11 +386,11 @@ module DatapathSingleCycle (
         else if(insn_sll) begin 
           rd_data = rs1_data << rs2_data[4:0];
         end
-        else if(insn_slt) begin  // recheck
+        else if(insn_slt) begin  
           rd_data = (rs1_data < rs2_data)? 32'b1:32'b0;
         end
         else if(insn_sltu) begin 
-          rd_data = (rs1_data < rs2_data)? 32'b1:32'b0;
+          rd_data = (rs1_data < $unsigned(rs2_data))? 32'b1:32'b0;
         end
         else if(insn_xor) begin 
           rd_data = rs1_data ^ rs2_data;
@@ -449,11 +416,11 @@ module DatapathSingleCycle (
           rd_data = mulitply_result[63:32];
         end  
         else if(insn_mulhsu)begin //recheck
-          mulitply_result = (rs1_data * rs2_data);
+          mulitply_result = (rs1_data * $unsigned(rs2_data));
           rd_data = mulitply_result[63:32];
         end
         else if(insn_mulhu)begin //recheck
-          mulitply_result = (rs1_data * rs2_data);
+          mulitply_result = ($unsigned(rs1_data) *  $unsigned(rs2_data));
           rd_data = mulitply_result[63:32];
         end
         else if(insn_div)begin //check 
@@ -463,7 +430,7 @@ module DatapathSingleCycle (
         end
         else if(insn_divu)begin 
           dividend = rs1_data; 
-          divisor = rs2_data;
+          divisor =  $unsigned(rs2_data);
           rd_data = quotient;        
         end
         else if (insn_rem)begin //check
@@ -473,24 +440,88 @@ module DatapathSingleCycle (
         end 
         else if(insn_remu)begin
           dividend = rs1_data; 
-          divisor = rs2_data;
+          divisor =  $unsigned(rs2_data);
           rd_data = remainder;
         end  
         else begin 
           illegal_insn = 1'b1;
         end                  
       end   
+      // OpJal: begin
+      //   if(insn_jal) begin
+      //     rd_data = pcCurrent + 32'd4;
+      //     pcNext = (imm_j_sext << 1);
+      //   end 
+      //   else begin 
+      //     illegal_insn = 1'b1; 
+      //   end 
+      // end
+      // OpJalr: begin
+      //   if(insn_jalr)begin 
+      //     rd_data = pcCurrent + 32'd4;
+      //     pcNext = ((rs1_data + imm_i_sext) & 32'b1);
+      //   end 
+      // end  
+      // OpStore: begin
+      //   if(insn_sb)begin
+      //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
+      //     data_store = {24'b0,rs2_data[7:0]};
+      //     we_datamem = 4'b0001;
+      //   end
+        // else if(insn_sh == 1'b1)begin
+        //   address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
+        //   data_store = {{16{1'b0}},rs2_data[15:0]};
+        //   we_datamem = 4'b0011;
+        // end
+        // else if(insn_sw == 1'b1)begin 
+        //   address_datamemory = (rs1_data + imm_i_sext[31:0]);
+        //   data_store = rs2_data;
+        //   we_datamem = 4'b1111;
+        // end
+        // else begin 
+        //   illegal_insn = 1'b1;
+        // end        
+     // end   
+      // OpLoad: begin //recheck 
+      //   if(insn_lb == 1'b1) begin
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = (rs2_data + sb_imm);
+      //   end  
+      //   else if(insn_lh)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
+      //   end
+      //   else if(insn_lw)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = (rs1_data + {imm_i_sext[31:0]});
+      //   end 
+      //   else if(insn_lbu)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
+      //   end 
+      //   else if(insn_lhu)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
+      //   end  
+      //   else begin
+      //     illegal_insn = 1'b1; 
+      //   end 
+      // end 
       default: begin
         illegal_insn = 1'b1;
       end
     endcase
+    // increment pc by 4
+    if(branch_taken == 1'b0) begin 
+      pcNext = pcCurrent + 32'd4;
+    end 
   end
 
   assign store_data_to_dmem = data_store;
   assign store_we_to_dmem = we_datamem;
-  assign addr_to_dmem = address_datamemory;
+  //assign addr_to_dmem = address_datamemory;
   assign halt = halt_signal;
-  assign pc_to_imem = pcCurrent + pc_value;
+ 
 
   divider_unsigned A1(.i_dividend(dividend),
                       .i_divisor(divisor),
