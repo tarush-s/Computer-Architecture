@@ -201,7 +201,6 @@ module DatapathSingleCycle (
       pcCurrent <= pcCurrent + 32'd4;
     end
   end
-  assign pc_to_imem = pcCurrent;
 
   // cycle/insn_from_imem counters
   logic [`REG_SIZE] cycles_current, num_insns_current;
@@ -234,8 +233,13 @@ module DatapathSingleCycle (
   logic [`REG_SIZE] rd_regfile; 
   logic [`REG_SIZE] CLA_A;
   logic [`REG_SIZE] CLA_B; 
+  logic halt_signal;
+  logic [`REG_SIZE] pc_value;
+  // data memeory control signals 
+  logic [`REG_SIZE] address_datamemory;
 
-  always_comb begin
+  always_latch begin
+    // assign default values to control signals
     illegal_insn = 1'b0;
     rd = insn_rd;
     rs1 = insn_rs1;
@@ -244,7 +248,70 @@ module DatapathSingleCycle (
     CLA_A = rs1_data;
     CLA_B = rs2_data;
     we = 1'b1;
+    halt_signal = 1'b0;
+    pc_value = 32'b0;
+    address_datamemory = 32'b0;
+
     case (insn_opcode)
+      OpBranch: begin 
+        if(insn_beq == 1'b1) begin 
+          if(rs1_data == rs2_data) 
+            pc_value = (pc_value + (imm_b_sext << 1));
+        end
+        else if(insn_bne == 1'b1)begin
+          if(rs1_data != rs2_data) 
+            pc_value = (pc_value + (imm_b_sext << 1)); 
+        end  
+        else if(insn_blt == 1'b1)begin // recheck
+          if(rs1_data < rs2_data) 
+            pc_value = (pc_value + (imm_b_sext << 1));
+        end
+        else if(insn_bge == 1'b1)begin // recheck
+          if(rs1_data >= rs2_data) 
+            pc_value = (pc_value + (imm_b_sext << 1));
+        end 
+        else if(insn_bltu == 1'b1)begin 
+          if(rs1_data < rs2_data) 
+            pc_value = (pc_value + (imm_b_sext << 1));
+        end
+        else if(insn_bgeu == 1'b1)begin 
+          if(rs1_data >= rs2_data) 
+            pc_value = (pc_value + (imm_b_sext << 1));
+        end 
+        else begin 
+          pc_value = 32'b0;
+        end       
+      end 
+      // OpLoad: begin //recheck 
+      //   if(insn_lb == 1'b1) begin
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
+      //   end  
+      //   else if(insn_lh)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = (rs1_data + {{15{imm_i_sext[15]}},imm_i_sext[15:0]});
+      //   end
+      //   else if(insn_lw)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = (rs1_data + {imm_i_sext[31:0]});
+      //   end 
+      //   else if(insn_lbu)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
+      //   end 
+      //   else if(insn_lhu)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = (rs1_data + {{15{imm_i_sext[15]}},imm_i_sext[15:0]});
+      //   end  
+      //   else begin
+      //     illegal_insn = 1'b1; 
+      //   end 
+      // end 
+      OpEnviron: begin
+         if(insn_ecall == 1'b1) begin
+          halt_signal = 1'b1;
+         end
+      end
       OpLui: begin
         // TODO: start here by implementing lui
         if(rd == 5'b0) begin 
@@ -261,7 +328,7 @@ module DatapathSingleCycle (
           CLA_B = imm_i_sext;
           rd_data = sum;
         end
-        else if (insn_slti == 1'b1) begin
+        else if (insn_slti == 1'b1) begin // recheck
           // slti instruction 
           if(imm_i_sext > rs1_data)
             rd_data = 32'b1;
@@ -318,7 +385,7 @@ module DatapathSingleCycle (
         else if(insn_sll == 1'b1) begin 
           rd_data = rs1_data << rs2_data[4:0];
         end
-        else if(insn_slt == 1'b1) begin 
+        else if(insn_slt == 1'b1) begin  // recheck
           rd_data = (rs1_data < rs2_data)? 32'b1:32'b0;
         end
         else if(insn_sltu == 1'b1) begin 
@@ -342,20 +409,16 @@ module DatapathSingleCycle (
         else begin 
           illegal_insn = 1'b1;
         end                  
-      end 
-      // OpBranch: begin 
-      //   if(insn_beq == 1'b1) begin 
-      //     if(rs1_data == rs2_data) 
-      //       pcNext = (pcNext + (imm_b_sext << 1));
-      //     else
-      //       pcNext = 32'b0;
-      //   end  
-      // end 
+      end   
       default: begin
         illegal_insn = 1'b1;
       end
     endcase
   end
+
+  assign addr_to_dmem = address_datamemory;
+  assign halt = halt_signal;
+  assign pc_to_imem = pcCurrent + pc_value;
 
   cla alu(.a(CLA_A),
           .b(CLA_B),
