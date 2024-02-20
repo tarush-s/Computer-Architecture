@@ -233,7 +233,8 @@ module DatapathSingleCycle (
   logic [`REG_SIZE] CLA_B; 
   logic halt_signal;
   // Control Signals for data memeory  
-  reg [`REG_SIZE] address_datamemory;
+  logic [`REG_SIZE] address_datamemory;
+  logic [`REG_SIZE] address_intermediate;
   logic [`REG_SIZE] data_store;
   logic [3:0] we_datamem;
   logic [63:0] mulitply_result;
@@ -242,7 +243,7 @@ module DatapathSingleCycle (
   logic [`REG_SIZE] divisor;
   logic [`REG_SIZE] remainder;
   logic [`REG_SIZE] quotient;
-  // control signals for branch
+  // Control Signals for branch
   logic branch_taken;
 
   always_comb begin
@@ -265,6 +266,7 @@ module DatapathSingleCycle (
     branch_taken = 1'b0;
     mulitply_result = 64'b0;
     pcNext = 32'b0;
+    address_intermediate = rs1_data + imm_i_sext;
 
     case (insn_opcode)
       OpBranch: begin 
@@ -316,57 +318,44 @@ module DatapathSingleCycle (
          end
       end
       OpLui: begin
-        // TODO: start here by implementing lui
-        // if(rd == 5'b0) begin 
-        //   rd_data = 0;
-        // end  
-        // else begin
+        if(rd == 5'b0)
+          rd_data = 0;
+        else 
           rd_data = (imm_u_ext << 12);
-        //end
       end
       OpRegImm: begin 
-      // code for I type instructions      
         if(insn_addi) begin 
-        // addi instruction 
           CLA_B = imm_i_sext;
           rd_data = sum;
         end
         else if (insn_slti) begin // recheck
-          // slti instruction 
           if(imm_i_sext > rs1_data)
             rd_data = 32'b1;
           else
             rd_data = 32'b0;
         end
         else if(insn_sltiu) begin
-          // sltiu instruction 
           if(imm_i_ext > rs1_data)
             rd_data = 32'b1;
           else
             rd_data = 32'b0;
         end  
         else if(insn_xori) begin 
-          // xori instruction
           rd_data = rs1_data ^ imm_s_sext;
         end 
         else if(insn_ori) begin
-          // ori instruction 
           rd_data = rs1_data | imm_s_sext;
         end
         else if(insn_andi) begin
-          // andi instruction 
           rd_data = rs1_data & imm_s_sext;
         end
         else if(insn_slli) begin
-          // slli instruction 
           rd_data = (rs1_data << (imm_i[4:0]));
         end
         else if(insn_srli) begin
-          // slri instruction 
           rd_data = (rs1_data >> (imm_i[4:0]));
         end
         else if(insn_srai) begin
-          // srai instruction 
           rd_data = (rs1_data >>> (imm_i[4:0]));
         end
         else begin 
@@ -447,21 +436,21 @@ module DatapathSingleCycle (
           illegal_insn = 1'b1;
         end                  
       end   
-      // OpJal: begin
-      //   if(insn_jal) begin
-      //     rd_data = pcCurrent + 32'd4;
-      //     pcNext = (imm_j_sext << 1);
-      //   end 
-      //   else begin 
-      //     illegal_insn = 1'b1; 
-      //   end 
-      // end
-      // OpJalr: begin
-      //   if(insn_jalr)begin 
-      //     rd_data = pcCurrent + 32'd4;
-      //     pcNext = ((rs1_data + imm_i_sext) & 32'b1);
-      //   end 
-      // end  
+      OpJal: begin
+        if(insn_jal) begin
+          rd_data = pcCurrent + 32'd4;
+          pcNext = (imm_j_sext << 1);
+        end 
+        else begin 
+          illegal_insn = 1'b1; 
+        end 
+      end
+      OpJalr: begin
+        if(insn_jalr)begin 
+          rd_data = pcCurrent + 32'd4;
+          pcNext = ((rs1_data + imm_i_sext) & 32'b1);
+        end 
+      end  
       // OpStore: begin
       //   if(insn_sb)begin
       //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
@@ -482,31 +471,31 @@ module DatapathSingleCycle (
         //   illegal_insn = 1'b1;
         // end        
      // end   
-      // OpLoad: begin //recheck 
-      //   if(insn_lb == 1'b1) begin
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs2_data + sb_imm);
-      //   end  
-      //   else if(insn_lh)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
-      //   end
-      //   else if(insn_lw)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {imm_i_sext[31:0]});
-      //   end 
-      //   else if(insn_lbu)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
-      //   end 
-      //   else if(insn_lhu)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
-      //   end  
-      //   else begin
-      //     illegal_insn = 1'b1; 
-      //   end 
-      // end 
+      OpLoad: begin //recheck 
+        if(insn_lb) begin
+          rd_data = load_data_from_dmem; 
+          address_datamemory = {{24{address_intermediate[7]}},address_intermediate[7:0]};
+        end  
+        else if(insn_lh)begin 
+          rd_data = load_data_from_dmem; 
+          address_datamemory = {{16{address_intermediate[15]}},address_intermediate[15:0]};
+        end
+        else if(insn_lw)begin 
+          rd_data = load_data_from_dmem; 
+          address_datamemory = address_intermediate;
+        end 
+        else if(insn_lbu)begin 
+          rd_data = load_data_from_dmem; 
+          address_datamemory = {{24'b0},address_intermediate[7:0]};
+        end 
+        else if(insn_lhu)begin 
+          rd_data = load_data_from_dmem; 
+          address_datamemory = {{16'b0},address_intermediate[15:0]};
+        end  
+        else begin
+          illegal_insn = 1'b1; 
+        end 
+      end 
       default: begin
         illegal_insn = 1'b1;
       end
@@ -516,12 +505,11 @@ module DatapathSingleCycle (
       pcNext = pcCurrent + 32'd4;
     end 
   end
-
+  // take care of memeor alignment 
   assign store_data_to_dmem = data_store;
   assign store_we_to_dmem = we_datamem;
-  //assign addr_to_dmem = address_datamemory;
+  assign addr_to_dmem = (address_datamemory << 2);
   assign halt = halt_signal;
- 
 
   divider_unsigned A1(.i_dividend(dividend),
                       .i_divisor(divisor),
@@ -578,7 +566,7 @@ module MemorySingleCycle #(
 );
 
   // memory is arranged as an array of 4B words
-  logic [`REG_SIZE] mem[NUM_WORDS];
+  logic [`REG_SIZE] mem [NUM_WORDS];
 
   initial begin
     $readmemh("mem_initial_contents.hex", mem, 0);
