@@ -6,7 +6,7 @@
 // RV opcodes are 7 bits
 `define OPCODE_SIZE 6:0
 
-`include "../hw2a/divider_unsigned.sv"
+`include "divider_unsigned.sv"
 //`include "../hw2b/cla.sv"
 `include "cla.sv"
 
@@ -270,50 +270,66 @@ module DatapathSingleCycle (
 
     case (insn_opcode)
       OpBranch: begin 
-        branch_taken = 1'b1;
         if(insn_beq) begin 
-          if(rs1_data == rs2_data) 
-            pcNext = (pcCurrent + (imm_b_sext << 1));
-          else  
-            pcNext = pcCurrent + 32'd4;
+          if(rs1_data == rs2_data) begin 
+            pcNext = (pcCurrent + (imm_b_sext));
+            branch_taken = 1'b1;
+          end
+          else begin 
+            branch_taken = 1'b0;
+          end 
         end
-        
         else if(insn_bne)begin
-          if(rs1_data != rs2_data) 
-            pcNext = (pcCurrent + (imm_b_sext << 1)); 
-          else  
-            pcNext = pcCurrent + 32'd4;
+          if(rs1_data != rs2_data) begin
+            pcNext = (pcCurrent + (imm_b_sext));
+            branch_taken = 1'b1;
+            end
+          else begin 
+            branch_taken = 1'b0;
+          end 
         end  
-        else if(insn_blt)begin // recheck
-          if(rs1_data < rs2_data) 
-            pcNext = (pcCurrent + (imm_b_sext << 1));
-          else  
-            pcNext = pcCurrent + 32'd4;
+        else if(insn_blt)begin 
+          if($signed(rs1_data) < $signed(rs2_data)) begin
+            pcNext = (pcCurrent + (imm_b_sext));
+            branch_taken = 1'b1;
+          end 
+          else begin 
+            branch_taken = 1'b0;
+          end
         end
         else if(insn_bge)begin // recheck
-          if(rs1_data >= rs2_data) 
-            pcNext = (pcCurrent + (imm_b_sext << 1));
-          else  
-            pcNext = pcCurrent + 32'd4;
+          if($signed(rs1_data) >= $signed(rs2_data)) begin
+            pcNext = (pcCurrent + (imm_b_sext));
+            branch_taken = 1'b1;
+          end
+          else begin 
+            branch_taken = 1'b0;
+          end 
         end 
         else if(insn_bltu)begin 
-          if(rs1_data < $unsigned(rs2_data)) 
-            pcNext = (pcCurrent + (imm_b_sext << 1));
-          else  
-            pcNext = pcCurrent + 32'd4;
+          if($signed(rs1_data) < $unsigned(rs2_data)) begin
+            pcNext = (pcCurrent + (imm_b_sext));
+            branch_taken = 1'b1;
+          end
+          else begin 
+            branch_taken = 1'b0;
+          end
         end
         else if(insn_bgeu)begin 
-          if(rs1_data >= $unsigned(rs2_data)) 
-            pcNext = (pcCurrent + (imm_b_sext << 1));
-          else  
-            pcNext = pcCurrent + 32'd4;
+          if($signed(rs1_data) >= $unsigned(rs2_data)) begin
+            pcNext = (pcCurrent + (imm_b_sext));
+            branch_taken = 1'b1;
+          end
+          else begin 
+            branch_taken = 1'b0;
+          end
         end 
         else begin 
           pcNext = pcCurrent + 32'd4;
         end       
       end 
       OpEnviron: begin
-         if(insn_ecall == 1'b1) begin
+         if(insn_ecall) begin
           halt_signal = 1'b1;
          end
       end
@@ -329,34 +345,34 @@ module DatapathSingleCycle (
           rd_data = sum;
         end
         else if (insn_slti) begin // recheck
-          if(imm_i_sext > rs1_data)
+          if($signed(imm_i_sext) > $signed(rs1_data))
             rd_data = 32'b1;
           else
             rd_data = 32'b0;
         end
         else if(insn_sltiu) begin
-          if(imm_i_ext > rs1_data)
+          if($unsigned(imm_i_ext) > $signed(rs1_data))
             rd_data = 32'b1;
           else
             rd_data = 32'b0;
         end  
         else if(insn_xori) begin 
-          rd_data = rs1_data ^ imm_s_sext;
+          rd_data = $signed(rs1_data) ^ imm_i_sext;
         end 
         else if(insn_ori) begin
-          rd_data = rs1_data | imm_s_sext;
+          rd_data = $signed(rs1_data) | imm_i_sext;
         end
         else if(insn_andi) begin
-          rd_data = rs1_data & imm_s_sext;
+          rd_data = $signed(rs1_data) & imm_i_sext;
         end
         else if(insn_slli) begin
-          rd_data = (rs1_data << (imm_i[4:0]));
+          rd_data = (rs1_data << (imm_i_ext[4:0]));
         end
         else if(insn_srli) begin
-          rd_data = (rs1_data >> (imm_i[4:0]));
+          rd_data = (rs1_data >> (imm_i_ext[4:0]));
         end
         else if(insn_srai) begin
-          rd_data = (rs1_data >>> (imm_i[4:0]));
+          rd_data = ($signed(rs1_data) >>> (imm_i_ext[4:0]));
         end
         else begin 
           illegal_insn = 1'b1;
@@ -376,7 +392,10 @@ module DatapathSingleCycle (
           rd_data = rs1_data << rs2_data[4:0];
         end
         else if(insn_slt) begin  
-          rd_data = (rs1_data < rs2_data)? 32'b1:32'b0;
+          if($signed(rs1_data) < $signed(rs2_data)) 
+            rd_data = 32'b1;
+          else 
+            rd_data = 32'b0;
         end
         else if(insn_sltu) begin 
           rd_data = (rs1_data < $unsigned(rs2_data))? 32'b1:32'b0;
@@ -385,10 +404,10 @@ module DatapathSingleCycle (
           rd_data = rs1_data ^ rs2_data;
         end
         else if(insn_srl) begin 
-          rd_data = rs1_data >> rs2_data[4:0];
+          rd_data = rs1_data >> (rs2_data[4:0]);
         end
         else if(insn_sra) begin 
-          rd_data = rs1_data >>> rs2_data[4:0];
+          rd_data = $signed(rs1_data) >>> (rs2_data[4:0]);
         end
         else if(insn_or) begin 
           rd_data = rs1_data | rs2_data;
@@ -401,11 +420,11 @@ module DatapathSingleCycle (
           rd_data = mulitply_result[31:0];
         end 
         else if(insn_mulh)begin //recheck
-          mulitply_result = (rs1_data * rs2_data);
+          mulitply_result = ($signed(rs1_data) * $signed(rs2_data));
           rd_data = mulitply_result[63:32];
         end  
         else if(insn_mulhsu)begin //recheck
-          mulitply_result = (rs1_data * $unsigned(rs2_data));
+          mulitply_result = ($signed(rs1_data) * $unsigned(rs2_data));
           rd_data = mulitply_result[63:32];
         end
         else if(insn_mulhu)begin //recheck
@@ -413,22 +432,22 @@ module DatapathSingleCycle (
           rd_data = mulitply_result[63:32];
         end
         else if(insn_div)begin //check 
-          dividend = rs1_data; 
-          divisor = rs2_data;
+          dividend = $signed(rs1_data); 
+          divisor = $signed(rs2_data);
           rd_data = quotient;
         end
         else if(insn_divu)begin 
-          dividend = rs1_data; 
+          dividend = $signed(rs1_data); 
           divisor =  $unsigned(rs2_data);
           rd_data = quotient;        
         end
         else if (insn_rem)begin //check
-          dividend = rs1_data; 
-          divisor = rs2_data;
+          dividend = $signed(rs1_data); 
+          divisor = $signed(rs2_data);
           rd_data = remainder;
         end 
         else if(insn_remu)begin
-          dividend = rs1_data; 
+          dividend = $signed(rs1_data); 
           divisor =  $unsigned(rs2_data);
           rd_data = remainder;
         end  
@@ -439,7 +458,7 @@ module DatapathSingleCycle (
       OpJal: begin
         if(insn_jal) begin
           rd_data = pcCurrent + 32'd4;
-          pcNext = (imm_j_sext << 1);
+          pcNext = imm_j_sext;
         end 
         else begin 
           illegal_insn = 1'b1; 
@@ -448,7 +467,7 @@ module DatapathSingleCycle (
       OpJalr: begin
         if(insn_jalr)begin 
           rd_data = pcCurrent + 32'd4;
-          pcNext = ((rs1_data + imm_i_sext) & 32'b1);
+          pcNext = ((rs1_data + imm_i_sext) & (~32'b1));
         end 
       end  
       // OpStore: begin
@@ -471,31 +490,31 @@ module DatapathSingleCycle (
         //   illegal_insn = 1'b1;
         // end        
      // end   
-      OpLoad: begin //recheck 
-        if(insn_lb) begin
-          rd_data = load_data_from_dmem; 
-          address_datamemory = {{24{address_intermediate[7]}},address_intermediate[7:0]};
-        end  
-        else if(insn_lh)begin 
-          rd_data = load_data_from_dmem; 
-          address_datamemory = {{16{address_intermediate[15]}},address_intermediate[15:0]};
-        end
-        else if(insn_lw)begin 
-          rd_data = load_data_from_dmem; 
-          address_datamemory = address_intermediate;
-        end 
-        else if(insn_lbu)begin 
-          rd_data = load_data_from_dmem; 
-          address_datamemory = {{24'b0},address_intermediate[7:0]};
-        end 
-        else if(insn_lhu)begin 
-          rd_data = load_data_from_dmem; 
-          address_datamemory = {{16'b0},address_intermediate[15:0]};
-        end  
-        else begin
-          illegal_insn = 1'b1; 
-        end 
-      end 
+      // OpLoad: begin //recheck 
+      //   if(insn_lb) begin
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = {{24{address_intermediate[7]}},address_intermediate[7:0]};
+      //   end  
+      //   else if(insn_lh)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = {{16{address_intermediate[15]}},address_intermediate[15:0]};
+      //   end
+      //   else if(insn_lw)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = address_intermediate;
+      //   end 
+      //   else if(insn_lbu)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = {{24'b0},address_intermediate[7:0]};
+      //   end 
+      //   else if(insn_lhu)begin 
+      //     rd_data = load_data_from_dmem; 
+      //     address_datamemory = {{16'b0},address_intermediate[15:0]};
+      //   end  
+      //   else begin
+      //     illegal_insn = 1'b1; 
+      //   end 
+      // end 
       default: begin
         illegal_insn = 1'b1;
       end
@@ -506,9 +525,9 @@ module DatapathSingleCycle (
     end 
   end
   // take care of memeor alignment 
-  assign store_data_to_dmem = data_store;
-  assign store_we_to_dmem = we_datamem;
-  assign addr_to_dmem = (address_datamemory << 2);
+  // assign store_data_to_dmem = data_store;
+  // assign store_we_to_dmem = we_datamem;
+  // assign addr_to_dmem = (address_datamemory << 2);
   assign halt = halt_signal;
 
   divider_unsigned A1(.i_dividend(dividend),
