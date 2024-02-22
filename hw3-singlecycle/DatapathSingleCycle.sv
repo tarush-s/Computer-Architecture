@@ -247,290 +247,291 @@ module DatapathSingleCycle (
   logic branch_taken;
 
   always_comb begin
-    // assign default values to control signals
-    illegal_insn = 1'b0;
-    rd = insn_rd; 
-    rs1 = insn_rs1;
-    rs2 = insn_rs2;
-    rd_data = 32'b0;
-    cin = 1'b0;
-    CLA_A = $signed(rs1_data);
-    CLA_B = $signed(rs2_data);
-    we = 1'b1;
-    halt_signal = 1'b0;
-    address_datamemory = 32'b0;
-    data_store = 32'b0;
-    we_datamem = 4'b0;
-    dividend = 32'b0;
-    divisor = 32'b0;
-    branch_taken = 1'b0;
-    mulitply_result = 64'b0;
-    pcNext = 32'b0;
-    address_intermediate = rs1_data + imm_i_sext;
+      // assign default values to control signals
+      illegal_insn = 1'b0;
+      rd = insn_rd; 
+      rs1 = insn_rs1;
+      rs2 = insn_rs2;
+      rd_data = 32'b0;
+      cin = 1'b0;
+      CLA_A = $signed(rs1_data);
+      CLA_B = $signed(rs2_data);
+      we = 1'b1;
+      halt_signal = 1'b0;
+      address_datamemory = 32'b0;
+      data_store = 32'b0;
+      we_datamem = 4'b0;
+      dividend = 32'b0;
+      divisor = 32'b0;
+      branch_taken = 1'b0;
+      mulitply_result = 64'b0;
+      pcNext = 32'b0;
+      address_intermediate = rs1_data + imm_i_sext;
 
-    case (insn_opcode)
-      OpBranch: begin 
-        if(insn_beq) begin 
-          if(rs1_data == rs2_data) begin 
-            pcNext = pcCurrent + imm_b_sext;
-            branch_taken = 1'b1;
-          end
-          else begin 
-            branch_taken = 1'b0;
-          end 
-        end
-        else if(insn_bne)begin
-          if(rs1_data != rs2_data) begin
-            pcNext = pcCurrent + imm_b_sext;
-            branch_taken = 1'b1;
+      case (insn_opcode)
+        OpBranch: begin 
+          we = 1'b0;
+          if(insn_beq) begin 
+            if(rs1_data == rs2_data) begin 
+              pcNext = pcCurrent + imm_b_sext;
+              branch_taken = 1'b1;
             end
-          else begin 
-            branch_taken = 1'b0;
-          end 
-        end  
-        else if(insn_blt)begin 
-          if($signed(rs1_data) < $signed(rs2_data)) begin
-            pcNext = pcCurrent + imm_b_sext;
-            branch_taken = 1'b1;
-          end 
-          else begin 
-            branch_taken = 1'b0;
+            else begin 
+              branch_taken = 1'b0;
+            end 
           end
-        end
-        else if(insn_bge)begin // recheck
-          if($signed(rs1_data) >= $signed(rs2_data)) begin
-            pcNext = pcCurrent + imm_b_sext;
-            branch_taken = 1'b1;
+          else if(insn_bne)begin
+            if(rs1_data != rs2_data) begin
+              pcNext = pcCurrent + imm_b_sext;
+              branch_taken = 1'b1;
+              end
+            else begin 
+              branch_taken = 1'b0;
+            end 
+          end  
+          else if(insn_blt)begin 
+            if($signed(rs1_data) < $signed(rs2_data)) begin
+              pcNext = pcCurrent + imm_b_sext;
+              branch_taken = 1'b1;
+            end 
+            else begin 
+              branch_taken = 1'b0;
+            end
           end
-          else begin 
-            branch_taken = 1'b0;
+          else if(insn_bge)begin // recheck
+            if($signed(rs1_data) >= $signed(rs2_data)) begin
+              pcNext = pcCurrent + imm_b_sext;
+              branch_taken = 1'b1;
+            end
+            else begin 
+              branch_taken = 1'b0;
+            end 
           end 
+          else if(insn_bltu)begin 
+            if($signed(rs1_data) < $unsigned(rs2_data)) begin
+              pcNext = pcCurrent + imm_b_sext;
+              branch_taken = 1'b1;
+            end
+            else begin 
+              branch_taken = 1'b0;
+            end
+          end
+          else if(insn_bgeu)begin 
+            if($signed(rs1_data) >= $unsigned(rs2_data)) begin
+              pcNext = pcCurrent + imm_b_sext;
+              branch_taken = 1'b1;
+            end
+            else begin 
+              branch_taken = 1'b0;
+            end
+          end 
+          else begin 
+            pcNext = pcCurrent + 32'd4;
+          end       
         end 
-        else if(insn_bltu)begin 
-          if($signed(rs1_data) < $unsigned(rs2_data)) begin
-            pcNext = pcCurrent + imm_b_sext;
-            branch_taken = 1'b1;
-          end
-          else begin 
-            branch_taken = 1'b0;
+        OpEnviron: begin
+          if(insn_ecall) begin
+            halt_signal = 1'b1;
           end
         end
-        else if(insn_bgeu)begin 
-          if($signed(rs1_data) >= $unsigned(rs2_data)) begin
-            pcNext = pcCurrent + imm_b_sext;
-            branch_taken = 1'b1;
-          end
-          else begin 
-            branch_taken = 1'b0;
-          end
-        end 
-        else begin 
-          pcNext = pcCurrent + 32'd4;
-        end       
-      end 
-      OpEnviron: begin
-         if(insn_ecall) begin
-          halt_signal = 1'b1;
-         end
-      end
-      OpLui: begin
-        if(rd == 5'b0)
-          rd_data = 32'b0;
-        else 
-          rd_data = (imm_u_ext << 12);
-      end
-      OpRegImm: begin 
-        if(insn_addi) begin 
-            CLA_B = imm_i_sext;
-            rd_data = sum;
-        end
-        else if (insn_slti) begin // recheck
-          if($signed(imm_i_sext) > $signed(rs1_data))
-            rd_data = 32'b1;
-          else
+        OpLui: begin
+          if(rd == 5'b0)
             rd_data = 32'b0;
-        end
-        else if(insn_sltiu) begin
-          if($signed(rs1_data) < $unsigned(imm_i_sext))
-            rd_data = 32'b1;
-          else
-            rd_data = 32'b0;
-        end  
-        else if(insn_xori) begin 
-          rd_data = $signed(rs1_data) ^ imm_i_sext;
-        end 
-        else if(insn_ori) begin
-          rd_data = $signed(rs1_data) | imm_i_sext;
-        end
-        else if(insn_andi) begin
-          rd_data = $signed(rs1_data) & imm_i_sext;
-        end
-        else if(insn_slli) begin
-          rd_data = (rs1_data << (imm_i_ext[4:0]));
-        end
-        else if(insn_srli) begin
-          rd_data = (rs1_data >> (imm_i_ext[4:0]));
-        end
-        else if(insn_srai) begin
-          rd_data = ($signed(rs1_data) >>> (imm_i_ext[4:0]));
-        end
-        else begin 
-          illegal_insn = 1'b1;
-        end 
-      end 
-      OpRegReg: begin
-        if(insn_add) begin 
-          rd_data = sum;
-        end
-        else if(insn_sub) begin 
-          CLA_A = rs1_data;
-          CLA_B = ~rs2_data;
-          cin = 1'b1;
-          rd_data = sum;
-        end
-        else if(insn_sll) begin 
-          rd_data = rs1_data << rs2_data[4:0];
-        end
-        else if(insn_slt) begin  
-          if($signed(rs1_data) < $signed(rs2_data)) 
-            rd_data = 32'b1;
           else 
-            rd_data = 32'b0;
+            rd_data = (imm_u_ext << 12);
         end
-        else if(insn_sltu) begin 
-          rd_data = (rs1_data < $unsigned(rs2_data))? 32'b1:32'b0;
-        end
-        else if(insn_xor) begin 
-          rd_data = rs1_data ^ rs2_data;
-        end
-        else if(insn_srl) begin 
-          rd_data = rs1_data >> (rs2_data[4:0]);
-        end
-        else if(insn_sra) begin 
-          rd_data = $signed(rs1_data) >>> (rs2_data[4:0]);
-        end
-        else if(insn_or) begin 
-          rd_data = rs1_data | rs2_data;
-        end
-        else if(insn_and) begin 
-          rd_data = rs1_data & rs2_data;
-        end
-        else if(insn_mul)begin 
-          mulitply_result = (rs1_data * rs2_data);
-          rd_data = mulitply_result[31:0];
+        OpRegImm: begin 
+          if(insn_addi) begin 
+              CLA_B = imm_i_sext;
+              rd_data = sum;
+          end
+          else if (insn_slti) begin // recheck
+            if($signed(imm_i_sext) > $signed(rs1_data))
+              rd_data = 32'b1;
+            else
+              rd_data = 32'b0;
+          end
+          else if(insn_sltiu) begin
+            if($signed(rs1_data) < $unsigned(imm_i_sext))
+              rd_data = 32'b1;
+            else
+              rd_data = 32'b0;
+          end  
+          else if(insn_xori) begin 
+            rd_data = $signed(rs1_data) ^ imm_i_sext;
+          end 
+          else if(insn_ori) begin
+            rd_data = $signed(rs1_data) | imm_i_sext;
+          end
+          else if(insn_andi) begin
+            rd_data = $signed(rs1_data) & imm_i_sext;
+          end
+          else if(insn_slli) begin
+            rd_data = (rs1_data << (imm_i_ext[4:0]));
+          end
+          else if(insn_srli) begin
+            rd_data = (rs1_data >> (imm_i_ext[4:0]));
+          end
+          else if(insn_srai) begin
+            rd_data = ($signed(rs1_data) >>> (imm_i_ext[4:0]));
+          end
+          else begin 
+            illegal_insn = 1'b1;
+          end 
         end 
-        else if(insn_mulh)begin //recheck
-          mulitply_result = ($signed(rs1_data) * $signed(rs2_data));
-          rd_data = mulitply_result[63:32];
+        OpRegReg: begin
+          if(insn_add) begin 
+            rd_data = sum;
+          end
+          else if(insn_sub) begin 
+            CLA_A = rs1_data;
+            CLA_B = ~rs2_data;
+            cin = 1'b1;
+            rd_data = sum;
+          end
+          else if(insn_sll) begin 
+            rd_data = rs1_data << rs2_data[4:0];
+          end
+          else if(insn_slt) begin  
+            if($signed(rs1_data) < $signed(rs2_data)) 
+              rd_data = 32'b1;
+            else 
+              rd_data = 32'b0;
+          end
+          else if(insn_sltu) begin 
+            rd_data = (rs1_data < $unsigned(rs2_data))? 32'b1:32'b0;
+          end
+          else if(insn_xor) begin 
+            rd_data = rs1_data ^ rs2_data;
+          end
+          else if(insn_srl) begin 
+            rd_data = rs1_data >> (rs2_data[4:0]);
+          end
+          else if(insn_sra) begin 
+            rd_data = $signed(rs1_data) >>> (rs2_data[4:0]);
+          end
+          else if(insn_or) begin 
+            rd_data = rs1_data | rs2_data;
+          end
+          else if(insn_and) begin 
+            rd_data = rs1_data & rs2_data;
+          end
+          else if(insn_mul)begin 
+            mulitply_result = (rs1_data * rs2_data);
+            rd_data = mulitply_result[31:0];
+          end 
+          else if(insn_mulh)begin //recheck
+            mulitply_result = ($signed(rs1_data) * $signed(rs2_data));
+            rd_data = mulitply_result[63:32];
+          end  
+          else if(insn_mulhsu)begin //recheck
+            mulitply_result = ($signed(rs1_data) * $unsigned(rs2_data));
+            rd_data = mulitply_result[63:32];
+          end
+          else if(insn_mulhu)begin //recheck
+            mulitply_result = ($unsigned(rs1_data) *  $unsigned(rs2_data));
+            rd_data = mulitply_result[63:32];
+          end
+          else if(insn_div)begin //check 
+            dividend = $signed(rs1_data); 
+            divisor = $signed(rs2_data);
+            rd_data = quotient;
+          end
+          else if(insn_divu)begin 
+            dividend = $signed(rs1_data); 
+            divisor =  $unsigned(rs2_data);
+            rd_data = quotient;        
+          end
+          else if (insn_rem)begin //check
+            dividend = $signed(rs1_data); 
+            divisor = $signed(rs2_data);
+            rd_data = remainder;
+          end 
+          else if(insn_remu)begin
+            dividend = $signed(rs1_data); 
+            divisor =  $unsigned(rs2_data);
+            rd_data = remainder;
+          end  
+          else begin 
+            illegal_insn = 1'b1;
+          end                  
+        end   
+        OpJal: begin
+          if(insn_jal) begin
+            rd_data = pcCurrent + 32'd4;
+            pcNext = imm_j_sext;
+            pcNext = pcCurrent + pcNext;
+            branch_taken = 1'b1;
+          end 
+          else begin 
+            branch_taken = 1'b0;
+          end 
+        end
+        OpJalr: begin
+          if(insn_jalr)begin 
+            rd_data = pcCurrent + 32'd4;
+            pcNext = (($signed(rs1_data) + imm_i_sext) & 32'hFFFFFFFE);
+            pcNext = pcCurrent + pcNext;
+            branch_taken = 1'b1;
+          end 
+          else begin 
+            branch_taken = 1'b0;
+          end
         end  
-        else if(insn_mulhsu)begin //recheck
-          mulitply_result = ($signed(rs1_data) * $unsigned(rs2_data));
-          rd_data = mulitply_result[63:32];
-        end
-        else if(insn_mulhu)begin //recheck
-          mulitply_result = ($unsigned(rs1_data) *  $unsigned(rs2_data));
-          rd_data = mulitply_result[63:32];
-        end
-        else if(insn_div)begin //check 
-          dividend = $signed(rs1_data); 
-          divisor = $signed(rs2_data);
-          rd_data = quotient;
-        end
-        else if(insn_divu)begin 
-          dividend = $signed(rs1_data); 
-          divisor =  $unsigned(rs2_data);
-          rd_data = quotient;        
-        end
-        else if (insn_rem)begin //check
-          dividend = $signed(rs1_data); 
-          divisor = $signed(rs2_data);
-          rd_data = remainder;
-        end 
-        else if(insn_remu)begin
-          dividend = $signed(rs1_data); 
-          divisor =  $unsigned(rs2_data);
-          rd_data = remainder;
-        end  
-        else begin 
+        // OpStore: begin
+        //   if(insn_sb)begin
+        //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
+        //     data_store = {24'b0,rs2_data[7:0]};
+        //     we_datamem = 4'b0001;
+        //   end
+          // else if(insn_sh == 1'b1)begin
+          //   address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
+          //   data_store = {{16{1'b0}},rs2_data[15:0]};
+          //   we_datamem = 4'b0011;
+          // end
+          // else if(insn_sw == 1'b1)begin 
+          //   address_datamemory = (rs1_data + imm_i_sext[31:0]);
+          //   data_store = rs2_data;
+          //   we_datamem = 4'b1111;
+          // end
+          // else begin 
+          //   illegal_insn = 1'b1;
+          // end        
+      // end   
+        // OpLoad: begin //recheck 
+        //   if(insn_lb) begin
+        //     rd_data = load_data_from_dmem; 
+        //     address_datamemory = {{24{address_intermediate[7]}},address_intermediate[7:0]};
+        //   end  
+        //   else if(insn_lh)begin 
+        //     rd_data = load_data_from_dmem; 
+        //     address_datamemory = {{16{address_intermediate[15]}},address_intermediate[15:0]};
+        //   end
+        //   else if(insn_lw)begin 
+        //     rd_data = load_data_from_dmem; 
+        //     address_datamemory = address_intermediate;
+        //   end 
+        //   else if(insn_lbu)begin 
+        //     rd_data = load_data_from_dmem; 
+        //     address_datamemory = {{24'b0},address_intermediate[7:0]};
+        //   end 
+        //   else if(insn_lhu)begin 
+        //     rd_data = load_data_from_dmem; 
+        //     address_datamemory = {{16'b0},address_intermediate[15:0]};
+        //   end  
+        //   else begin
+        //     illegal_insn = 1'b1; 
+        //   end 
+        // end 
+        default: begin
           illegal_insn = 1'b1;
-        end                  
-      end   
-      OpJal: begin
-        if(insn_jal) begin
-          rd_data = pcCurrent + 32'd4;
-          pcNext = imm_j_sext;
-          pcNext = pcCurrent + pcNext;
-          branch_taken = 1'b1;
-        end 
-        else begin 
-          branch_taken = 1'b0;
-        end 
-      end
-      OpJalr: begin
-        if(insn_jalr)begin 
-          rd_data = pcCurrent + 32'd4;
-          pcNext = (($signed(rs1_data) + imm_i_sext) & 32'hFFFFFFFE);
-          pcNext = pcCurrent + pcNext;
-          branch_taken = 1'b1;
-        end 
-        else begin 
-          branch_taken = 1'b0;
         end
-      end  
-      // OpStore: begin
-      //   if(insn_sb)begin
-      //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
-      //     data_store = {24'b0,rs2_data[7:0]};
-      //     we_datamem = 4'b0001;
-      //   end
-        // else if(insn_sh == 1'b1)begin
-        //   address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
-        //   data_store = {{16{1'b0}},rs2_data[15:0]};
-        //   we_datamem = 4'b0011;
-        // end
-        // else if(insn_sw == 1'b1)begin 
-        //   address_datamemory = (rs1_data + imm_i_sext[31:0]);
-        //   data_store = rs2_data;
-        //   we_datamem = 4'b1111;
-        // end
-        // else begin 
-        //   illegal_insn = 1'b1;
-        // end        
-     // end   
-      // OpLoad: begin //recheck 
-      //   if(insn_lb) begin
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = {{24{address_intermediate[7]}},address_intermediate[7:0]};
-      //   end  
-      //   else if(insn_lh)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = {{16{address_intermediate[15]}},address_intermediate[15:0]};
-      //   end
-      //   else if(insn_lw)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = address_intermediate;
-      //   end 
-      //   else if(insn_lbu)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = {{24'b0},address_intermediate[7:0]};
-      //   end 
-      //   else if(insn_lhu)begin 
-      //     rd_data = load_data_from_dmem; 
-      //     address_datamemory = {{16'b0},address_intermediate[15:0]};
-      //   end  
-      //   else begin
-      //     illegal_insn = 1'b1; 
-      //   end 
-      // end 
-      default: begin
-        illegal_insn = 1'b1;
-      end
-    endcase
-    // increment pc by 4
-    if(branch_taken == 1'b0) begin 
-      pcNext = pcCurrent + 32'd4;
+      endcase
+      // increment pc by 4
+      if(branch_taken == 1'b0) begin 
+        pcNext = pcCurrent + 32'd4;
+      end 
     end 
-end 
   // take care of memeor alignment 
   // assign store_data_to_dmem = data_store;
   // assign store_we_to_dmem = we_datamem;
