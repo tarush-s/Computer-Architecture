@@ -45,7 +45,7 @@ module RegFile (
         regs[i] <=0;
     end
     else begin 
-      if((we == 1'b1) && (rd != 0)) 
+      if((rd!= 5'd0) && (we == 1'b1)) 
         regs[rd] <= rd_data;  
       end  
   end
@@ -249,13 +249,13 @@ module DatapathSingleCycle (
   always_comb begin
     // assign default values to control signals
     illegal_insn = 1'b0;
-    rd = insn_rd;
+    rd = insn_rd; 
     rs1 = insn_rs1;
     rs2 = insn_rs2;
     rd_data = 32'b0;
     cin = 1'b0;
-    CLA_A = rs1_data;
-    CLA_B = rs2_data;
+    CLA_A = $signed(rs1_data);
+    CLA_B = $signed(rs2_data);
     we = 1'b1;
     halt_signal = 1'b0;
     address_datamemory = 32'b0;
@@ -272,7 +272,7 @@ module DatapathSingleCycle (
       OpBranch: begin 
         if(insn_beq) begin 
           if(rs1_data == rs2_data) begin 
-            pcNext = (pcCurrent + (imm_b_sext));
+            pcNext = pcCurrent + imm_b_sext;
             branch_taken = 1'b1;
           end
           else begin 
@@ -281,7 +281,7 @@ module DatapathSingleCycle (
         end
         else if(insn_bne)begin
           if(rs1_data != rs2_data) begin
-            pcNext = (pcCurrent + (imm_b_sext));
+            pcNext = pcCurrent + imm_b_sext;
             branch_taken = 1'b1;
             end
           else begin 
@@ -290,7 +290,7 @@ module DatapathSingleCycle (
         end  
         else if(insn_blt)begin 
           if($signed(rs1_data) < $signed(rs2_data)) begin
-            pcNext = (pcCurrent + (imm_b_sext));
+            pcNext = pcCurrent + imm_b_sext;
             branch_taken = 1'b1;
           end 
           else begin 
@@ -299,7 +299,7 @@ module DatapathSingleCycle (
         end
         else if(insn_bge)begin // recheck
           if($signed(rs1_data) >= $signed(rs2_data)) begin
-            pcNext = (pcCurrent + (imm_b_sext));
+            pcNext = pcCurrent + imm_b_sext;
             branch_taken = 1'b1;
           end
           else begin 
@@ -308,7 +308,7 @@ module DatapathSingleCycle (
         end 
         else if(insn_bltu)begin 
           if($signed(rs1_data) < $unsigned(rs2_data)) begin
-            pcNext = (pcCurrent + (imm_b_sext));
+            pcNext = pcCurrent + imm_b_sext;
             branch_taken = 1'b1;
           end
           else begin 
@@ -317,7 +317,7 @@ module DatapathSingleCycle (
         end
         else if(insn_bgeu)begin 
           if($signed(rs1_data) >= $unsigned(rs2_data)) begin
-            pcNext = (pcCurrent + (imm_b_sext));
+            pcNext = pcCurrent + imm_b_sext;
             branch_taken = 1'b1;
           end
           else begin 
@@ -335,14 +335,14 @@ module DatapathSingleCycle (
       end
       OpLui: begin
         if(rd == 5'b0)
-          rd_data = 0;
+          rd_data = 32'b0;
         else 
           rd_data = (imm_u_ext << 12);
       end
       OpRegImm: begin 
         if(insn_addi) begin 
-          CLA_B = imm_i_sext;
-          rd_data = sum;
+            CLA_B = imm_i_sext;
+            rd_data = sum;
         end
         else if (insn_slti) begin // recheck
           if($signed(imm_i_sext) > $signed(rs1_data))
@@ -351,7 +351,7 @@ module DatapathSingleCycle (
             rd_data = 32'b0;
         end
         else if(insn_sltiu) begin
-          if($unsigned(imm_i_ext) > $signed(rs1_data))
+          if($signed(rs1_data) < $unsigned(imm_i_sext))
             rd_data = 32'b1;
           else
             rd_data = 32'b0;
@@ -379,7 +379,7 @@ module DatapathSingleCycle (
         end 
       end 
       OpRegReg: begin
-        if(insn_add ) begin 
+        if(insn_add) begin 
           rd_data = sum;
         end
         else if(insn_sub) begin 
@@ -459,16 +459,23 @@ module DatapathSingleCycle (
         if(insn_jal) begin
           rd_data = pcCurrent + 32'd4;
           pcNext = imm_j_sext;
+          pcNext = pcCurrent + pcNext;
+          branch_taken = 1'b1;
         end 
         else begin 
-          illegal_insn = 1'b1; 
+          branch_taken = 1'b0;
         end 
       end
       OpJalr: begin
         if(insn_jalr)begin 
           rd_data = pcCurrent + 32'd4;
-          pcNext = ((rs1_data + imm_i_sext) & (~32'b1));
+          pcNext = (($signed(rs1_data) + imm_i_sext) & 32'hFFFFFFFE);
+          pcNext = pcCurrent + pcNext;
+          branch_taken = 1'b1;
         end 
+        else begin 
+          branch_taken = 1'b0;
+        end
       end  
       // OpStore: begin
       //   if(insn_sb)begin
@@ -523,7 +530,7 @@ module DatapathSingleCycle (
     if(branch_taken == 1'b0) begin 
       pcNext = pcCurrent + 32'd4;
     end 
-  end
+end 
   // take care of memeor alignment 
   // assign store_data_to_dmem = data_store;
   // assign store_we_to_dmem = we_datamem;

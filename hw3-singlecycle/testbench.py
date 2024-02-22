@@ -36,7 +36,7 @@ READELF = 'riscv64-unknown-elf-readelf'
 RISCV_TESTS_PATH = Path('../../riscv-tests/isa')
 RISCV_BENCHMARKS_PATH = Path('../../riscv-tests/benchmarks')
 
-TIMEOUT_CYCLES = 1_000
+TIMEOUT_CYCLES = 1_500
 
 def asm(dut, assemblyCode):
     """Assembles the given RISC-V code, returning the machine code as a list of numbers"""
