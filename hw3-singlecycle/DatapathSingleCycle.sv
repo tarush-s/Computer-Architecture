@@ -6,9 +6,9 @@
 // RV opcodes are 7 bits
 `define OPCODE_SIZE 6:0
 
-`include "divider_unsigned.sv"
-//`include "../hw2b/cla.sv"
-`include "cla.sv"
+`include "../hw2a/divider_unsigned.sv"
+`include "../hw2b/cla.sv"
+//`include "cla.sv"
 
 module mux2_1 (
   input wire [31:0] A, 
