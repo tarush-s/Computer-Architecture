@@ -298,7 +298,7 @@ module DatapathSingleCycle (
               branch_taken = 1'b0;
             end
           end
-          else if(insn_bge)begin // recheck
+          else if(insn_bge)begin 
             if($signed(rs1_data) >= $signed(rs2_data)) begin
               pcNext = pcCurrent + imm_b_sext;
               branch_taken = 1'b1;
@@ -345,7 +345,7 @@ module DatapathSingleCycle (
               CLA_B = imm_i_sext;
               rd_data = sum;
           end
-          else if (insn_slti) begin // recheck
+          else if (insn_slti) begin 
             if($signed(imm_i_sext) > $signed(rs1_data))
               rd_data = 32'b1;
             else
