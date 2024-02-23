@@ -236,27 +236,30 @@ module DatapathSingleCycle (
   logic [`REG_SIZE] quotient;
   // Control Signals for branch
   logic branch_taken;
+  // Control signals for Jal and Jalr
+  logic [`REG_SIZE] pcIntermmidiate;
 
   always_comb begin
       // assign default values to control signals
       illegal_insn = 1'b0;
+      we = 1'b1;
+      cin = 1'b0;
       rd = insn_rd; 
       rs1 = insn_rs1;
       rs2 = insn_rs2;
+      pcNext = 32'b0;
       rd_data = 32'b0;
-      cin = 1'b0;
+      divisor = 32'b0;
+      dividend = 32'b0;
+      we_datamem = 4'b0;
+      halt_signal = 1'b0;
+      data_store = 32'b0;
+      branch_taken = 1'b0;
+      pcIntermmidiate = 32'b0;
+      mulitply_result = 64'b0;
       CLA_A = $signed(rs1_data);
       CLA_B = $signed(rs2_data);
-      we = 1'b1;
-      halt_signal = 1'b0;
       address_datamemory = 32'b0;
-      data_store = 32'b0;
-      we_datamem = 4'b0;
-      dividend = 32'b0;
-      divisor = 32'b0;
-      branch_taken = 1'b0;
-      mulitply_result = 64'b0;
-      pcNext = 32'b0;
       address_intermediate = rs1_data + imm_i_sext;
 
       case (insn_opcode)
@@ -332,6 +335,15 @@ module DatapathSingleCycle (
           else 
             rd_data = (imm_u_ext << 12);
         end
+        OpAuipc: begin
+          if(insn_auipc) begin 
+            pcIntermmidiate = imm_u_ext << 12; 
+            rd_data = pcCurrent + pcIntermmidiate; 
+          end  
+          else begin 
+            illegal_insn = 1'b1;
+          end 
+        end 
         OpRegImm: begin 
           if(insn_addi) begin 
               CLA_B = imm_i_sext;
@@ -450,10 +462,9 @@ module DatapathSingleCycle (
         end   
         OpJal: begin
           if(insn_jal) begin
-            rd_data = pcCurrent + 32'd4;
-            pcNext = imm_j_sext;
-            pcNext = pcCurrent + pcNext;
             branch_taken = 1'b1;
+            rd_data = pcCurrent + 32'd4;
+            pcNext = pcCurrent + imm_j_sext;
           end 
           else begin 
             branch_taken = 1'b0;
@@ -461,10 +472,10 @@ module DatapathSingleCycle (
         end
         OpJalr: begin
           if(insn_jalr)begin 
-            rd_data = pcCurrent + 32'd4;
-            pcNext = (($signed(rs1_data) + $signed(imm_i_sext)) & 32'hFFFFFFFE);
-            pcNext = pcCurrent + pcNext;
             branch_taken = 1'b1;
+            rd_data = pcCurrent + 32'd4;
+            pcIntermmidiate = (($signed(rs1_data) + $signed(imm_i_sext)) & 32'hFFFFFFFE);
+            pcNext = pcCurrent + pcIntermmidiate;
           end 
           else begin 
             branch_taken = 1'b0;
@@ -490,11 +501,13 @@ module DatapathSingleCycle (
           //   illegal_insn = 1'b1;
           // end        
       // end   
-        // OpLoad: begin //recheck 
-        //   if(insn_lb) begin
-        //     rd_data = load_data_from_dmem; 
-        //     address_datamemory = {{24{address_intermediate[7]}},address_intermediate[7:0]};
-        //   end  
+        OpLoad: begin //recheck 
+          if(insn_lb) begin
+            address_intermediate = (rs1_data + (imm_i_sext << 2));
+            address_datamemory = (address_intermediate & 32'hFFFF_FFFC); 
+            rd_data = {{24{load_data_from_dmem[7]}},load_data_from_dmem[7:0]}; 
+            
+          end  
         //   else if(insn_lh)begin 
         //     rd_data = load_data_from_dmem; 
         //     address_datamemory = {{16{address_intermediate[15]}},address_intermediate[15:0]};
@@ -511,10 +524,10 @@ module DatapathSingleCycle (
         //     rd_data = load_data_from_dmem; 
         //     address_datamemory = {{16'b0},address_intermediate[15:0]};
         //   end  
-        //   else begin
-        //     illegal_insn = 1'b1; 
-        //   end 
-        // end 
+          else begin
+            illegal_insn = 1'b1; 
+          end 
+        end 
         default: begin
           illegal_insn = 1'b1;
         end
@@ -525,9 +538,9 @@ module DatapathSingleCycle (
       end 
     end 
   // take care of memeor alignment 
-  // assign store_data_to_dmem = data_store;
-  // assign store_we_to_dmem = we_datamem;
-  // assign addr_to_dmem = (address_datamemory << 2);
+  assign store_data_to_dmem = data_store;
+  assign store_we_to_dmem = we_datamem;
+  assign addr_to_dmem = address_datamemory ;
   assign halt = halt_signal;
 
   divider_unsigned A1(.i_dividend(dividend),
