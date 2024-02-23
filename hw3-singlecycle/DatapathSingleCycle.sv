@@ -10,15 +10,6 @@
 `include "../hw2b/cla.sv"
 //`include "cla.sv"
 
-module mux2_1 (
-  input wire [31:0] A, 
-  input wire [31:0] B, 
-  input wire sel, 
-  output wire [31:0] out
-); 
-  assign out = (sel == 1'b1) ? A : B;
-endmodule 
-
 module RegFile (
     input logic [4:0] rd,
     input logic [`REG_SIZE] rd_data,
@@ -330,6 +321,7 @@ module DatapathSingleCycle (
           end       
         end 
         OpEnviron: begin
+          we = 1'b0;
           if(insn_ecall) begin
             halt_signal = 1'b1;
           end
@@ -443,8 +435,8 @@ module DatapathSingleCycle (
             rd_data = quotient;        
           end
           else if (insn_rem)begin //check
-            dividend = $signed(rs1_data); 
-            divisor = $signed(rs2_data);
+            dividend = rs1_data; 
+            divisor = rs2_data;
             rd_data = remainder;
           end 
           else if(insn_remu)begin
@@ -470,7 +462,7 @@ module DatapathSingleCycle (
         OpJalr: begin
           if(insn_jalr)begin 
             rd_data = pcCurrent + 32'd4;
-            pcNext = (($signed(rs1_data) + imm_i_sext) & 32'hFFFFFFFE);
+            pcNext = (($signed(rs1_data) + $signed(imm_i_sext)) & 32'hFFFFFFFE);
             pcNext = pcCurrent + pcNext;
             branch_taken = 1'b1;
           end 
