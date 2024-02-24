@@ -253,14 +253,14 @@ module DatapathSingleCycle (
       dividend = 32'b0;
       we_datamem = 4'b0;
       halt_signal = 1'b0;
-      data_store = 32'b0;
       branch_taken = 1'b0;
+      data_store = 32'b0;
       pcIntermmidiate = 32'b0;
       mulitply_result = 64'b0;
       CLA_A = $signed(rs1_data);
       CLA_B = $signed(rs2_data);
-      address_datamemory = 32'b0;
       address_intermediate = rs1_data + imm_i_sext;
+      address_datamemory = (address_intermediate & 32'hFFFF_FFFC); 
 
       case (insn_opcode)
         OpBranch: begin 
@@ -481,49 +481,73 @@ module DatapathSingleCycle (
             branch_taken = 1'b0;
           end
         end  
-        // OpStore: begin
-        //   if(insn_sb)begin
-        //     address_datamemory = (rs1_data + {{24{imm_i_sext[7]}},imm_i_sext[7:0]});
-        //     data_store = {24'b0,rs2_data[7:0]};
-        //     we_datamem = 4'b0001;
-        //   end
-          // else if(insn_sh == 1'b1)begin
-          //   address_datamemory = (rs1_data + {{16{imm_i_sext[15]}},imm_i_sext[15:0]});
-          //   data_store = {{16{1'b0}},rs2_data[15:0]};
-          //   we_datamem = 4'b0011;
-          // end
-          // else if(insn_sw == 1'b1)begin 
-          //   address_datamemory = (rs1_data + imm_i_sext[31:0]);
-          //   data_store = rs2_data;
-          //   we_datamem = 4'b1111;
-          // end
-          // else begin 
-          //   illegal_insn = 1'b1;
-          // end        
-      // end   
+        OpStore: begin
+          data_store = rs1_data;
+          if(insn_sb)begin
+            if(address_intermediate[1:0] == 2'b00) begin
+              we_datamem = 4'b0000;
+            end
+            else if(address_intermediate[1:0] == 2'b01)begin
+              we_datamem = 4'b0010;
+            end
+            else if(address_intermediate[1:0] == 2'b10) begin 
+              we_datamem = 4'b0100;
+            end
+            else begin
+              we_datamem = 4'b1000; 
+            end 
+          end
+          else if(insn_sh)begin
+            if(address_intermediate[1:0] == 2'b00) begin
+              we_datamem = 4'b0011;
+            end
+            else begin 
+              we_datamem = 4'b1100;
+            end 
+          end
+          else if(insn_sw)begin 
+            we_datamem = 4'b1111;
+          end
+          else begin 
+            illegal_insn = 1'b1;
+          end        
+        end   
         OpLoad: begin //recheck 
           if(insn_lb) begin
-            address_intermediate = (rs1_data + (imm_i_sext << 2));
-            address_datamemory = (address_intermediate & 32'hFFFF_FFFC); 
-            rd_data = {{24{load_data_from_dmem[7]}},load_data_from_dmem[7:0]}; 
-            
+            if(address_intermediate[1:0] == 2'b00) 
+              rd_data = {{24{load_data_from_dmem[7]}},load_data_from_dmem[7:0]}; 
+            else if(address_intermediate[1:0] == 2'b01)
+              rd_data = {{24{load_data_from_dmem[15]}},load_data_from_dmem[15:8]};
+            else if(address_intermediate[1:0] == 2'b10)
+              rd_data = {{24{load_data_from_dmem[23]}},load_data_from_dmem[23:16]};
+            else
+              rd_data = {{24{load_data_from_dmem[31]}},load_data_from_dmem[31:24]};  
           end  
-        //   else if(insn_lh)begin 
-        //     rd_data = load_data_from_dmem; 
-        //     address_datamemory = {{16{address_intermediate[15]}},address_intermediate[15:0]};
-        //   end
-        //   else if(insn_lw)begin 
-        //     rd_data = load_data_from_dmem; 
-        //     address_datamemory = address_intermediate;
-        //   end 
-        //   else if(insn_lbu)begin 
-        //     rd_data = load_data_from_dmem; 
-        //     address_datamemory = {{24'b0},address_intermediate[7:0]};
-        //   end 
-        //   else if(insn_lhu)begin 
-        //     rd_data = load_data_from_dmem; 
-        //     address_datamemory = {{16'b0},address_intermediate[15:0]};
-        //   end  
+          else if(insn_lh)begin 
+            if(address_intermediate[1:0] == 2'b00) 
+              rd_data = {{16{load_data_from_dmem[15]}},load_data_from_dmem[15:0]}; 
+            else
+              rd_data = {{16{load_data_from_dmem[31]}},load_data_from_dmem[31:16]}; 
+          end
+          else if(insn_lw)begin 
+            rd_data = load_data_from_dmem[31:0]; 
+          end 
+          else if(insn_lbu)begin 
+            if(address_intermediate[1:0] == 2'b00) 
+              rd_data = {{24'b0},load_data_from_dmem[7:0]}; 
+            else if(address_intermediate[1:0] == 2'b01)
+              rd_data = {{24'b0},load_data_from_dmem[15:8]};
+            else if(address_intermediate[1:0] == 2'b10)
+              rd_data = {{24'b0},load_data_from_dmem[23:16]};
+            else
+              rd_data = {{24'b0},load_data_from_dmem[31:24]};
+          end 
+          else if(insn_lhu)begin 
+            if(address_intermediate[1:0] == 2'b00) 
+              rd_data = {{16'b0},load_data_from_dmem[15:0]}; 
+            else
+              rd_data = {{16'b0},load_data_from_dmem[31:16]}; 
+          end  
           else begin
             illegal_insn = 1'b1; 
           end 
