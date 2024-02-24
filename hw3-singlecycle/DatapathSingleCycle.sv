@@ -482,10 +482,10 @@ module DatapathSingleCycle (
           end
         end  
         OpStore: begin
-          data_store = rs1_data;
+          data_store = rs2_data;
           if(insn_sb)begin
             if(address_intermediate[1:0] == 2'b00) begin
-              we_datamem = 4'b0000;
+              we_datamem = 4'b0001;
             end
             else if(address_intermediate[1:0] == 2'b01)begin
               we_datamem = 4'b0010;
