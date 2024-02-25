@@ -424,7 +424,7 @@ module DatapathSingleCycle (
             mulitply_result = (rs1_data * rs2_data);
             rd_data = mulitply_result[31:0];
           end 
-          else if(insn_mulh)begin //recheck
+          else if(insn_mulh)begin 
             mulitply_result = ($signed(rs1_data) * $signed(rs2_data));
             rd_data = mulitply_result[63:32];
           end  
@@ -436,10 +436,18 @@ module DatapathSingleCycle (
             mulitply_result = ($unsigned(rs1_data) *  $unsigned(rs2_data));
             rd_data = mulitply_result[63:32];
           end
-          else if(insn_div)begin //check 
-            dividend = $signed(rs1_data); 
-            divisor = $signed(rs2_data);
-            rd_data = quotient;
+          else if(insn_div)begin 
+            dividend = (rs1_data[31]) ? (~rs1_data + 32'b1) : rs1_data; 
+            divisor = (rs2_data[31]) ? (~rs2_data + 32'b1) : rs2_data;
+            if(( rs1_data == 0 | rs2_data == 0)) begin  
+               rd_data = $signed(32'hFFFF_FFFF);             
+            end 
+            else if(rs1_data[31] != rs2_data[31]) begin
+              rd_data = (~quotient + 32'b1);
+            end 
+            else begin 
+              rd_data = quotient;
+            end 
           end
           else if(insn_divu)begin 
             dividend = $signed(rs1_data); 
@@ -447,9 +455,17 @@ module DatapathSingleCycle (
             rd_data = quotient;        
           end
           else if (insn_rem)begin //check
-            dividend = rs1_data; 
-            divisor = rs2_data;
-            rd_data = remainder;
+            dividend = (rs1_data[31]) ? (~rs1_data + 32'b1) : rs1_data; 
+            divisor = (rs2_data[31]) ? (~rs2_data + 32'b1) : rs2_data;
+            if(rs1_data == 32'b0) begin  
+               rd_data = (rs2_data[31]) ? (~rs2_data + 32'b1) : rs2_data;             
+            end 
+            else if((rs1_data[31])) begin
+              rd_data = (~remainder + 32'b1);
+            end 
+            else begin 
+              rd_data = remainder;
+            end
           end 
           else if(insn_remu)begin
             dividend = $signed(rs1_data); 
@@ -512,7 +528,7 @@ module DatapathSingleCycle (
             illegal_insn = 1'b1;
           end        
         end   
-        OpLoad: begin //recheck 
+        OpLoad: begin 
           if(insn_lb) begin
             if(address_intermediate[1:0] == 2'b00) 
               rd_data = {{24{load_data_from_dmem[7]}},load_data_from_dmem[7:0]}; 
