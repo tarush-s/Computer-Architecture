@@ -287,7 +287,7 @@ module DatapathSingleCycle (
         OpAuipc: begin
           if(insn_auipc) begin 
             pcIntermmidiate = imm_u_ext << 12; 
-            rd_data = pcCurrent + pcIntermmidiate; 
+            rd_data = pcCurrent + (imm_u_ext << 12); 
           end  
           else begin 
             illegal_insn = 1'b1;
@@ -308,7 +308,7 @@ module DatapathSingleCycle (
             branch_taken = 1'b1;
             rd_data = pcCurrent + 32'd4;
             pcIntermmidiate = (($signed(rs1_data) + $signed(imm_i_sext)) & 32'hFFFFFFFE);
-            pcNext = pcCurrent + pcIntermmidiate;
+            pcNext = pcIntermmidiate;
           end 
           else begin 
             branch_taken = 1'b0;
@@ -605,7 +605,7 @@ module DatapathSingleCycle (
         pcNext = pcCurrent + 32'd4;
       end 
     end 
-  // take care of memeor alignment 
+  // take care of memeory alignment 
   assign store_data_to_dmem = data_store;
   assign store_we_to_dmem = we_datamem;
   assign addr_to_dmem = address_datamemory ;
