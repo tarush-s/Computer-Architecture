@@ -228,7 +228,11 @@ module DatapathSingleCycle (
   logic [`REG_SIZE] address_intermediate;
   logic [`REG_SIZE] data_store;
   logic [3:0] we_datamem;
+  // Control Signals for multiply insn 
   logic [63:0] mulitply_result;
+  logic [63:0] store_result;
+  logic [`REG_SIZE] multiplicand;
+  logic [`REG_SIZE] multiplier;
   // Control Signals for divider
   logic [`REG_SIZE] dividend;
   logic [`REG_SIZE] divisor;
@@ -257,6 +261,9 @@ module DatapathSingleCycle (
       illegal_insn = 1'b0;
       pcIntermmidiate = 32'b0;
       mulitply_result = 64'b0;
+      multiplicand = 32'b0;
+      multiplier = 32'b0;
+      store_result = 64'b0;
       CLA_A = $signed(rs1_data);
       CLA_B = $signed(rs2_data);
       address_datamemory = 32'b0; 
@@ -459,8 +466,15 @@ module DatapathSingleCycle (
             rd_data = mulitply_result[63:32];
           end  
           else if(insn_mulhsu)begin //recheck
-            mulitply_result = (rs1_data * $unsigned(rs2_data));
-            rd_data = mulitply_result[63:32];
+            multiplicand = (rs1_data[31]) ? (~rs1_data + 32'b1) : rs1_data;
+            mulitply_result = (multiplicand * $unsigned(rs2_data));
+            if(rs1_data[31]) begin
+              store_result = ~mulitply_result + 64'b1;
+            end 
+            else begin
+              store_result = mulitply_result;
+            end 
+            rd_data = store_result[63:32];                     
           end
           else if(insn_mulhu)begin 
             mulitply_result = ($unsigned(rs1_data) *  $unsigned(rs2_data));
