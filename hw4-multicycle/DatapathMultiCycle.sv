@@ -488,7 +488,6 @@ module DatapathMultiCycle (
             rd_data = mulitply_result[63:32];
           end
           else if(insn_div)begin 
-            branch_taken = 1'b1;
             dividend = (rs1_data[31]) ? (~rs1_data + 32'b1) : rs1_data; 
             divisor = (rs2_data[31]) ? (~rs2_data + 32'b1) : rs2_data;
             if(( rs1_data == 0 | rs2_data == 0)) begin  
@@ -502,13 +501,11 @@ module DatapathMultiCycle (
             end 
           end
           else if(insn_divu)begin 
-            branch_taken = 1'b1;
             dividend = $signed(rs1_data); 
             divisor =  $unsigned(rs2_data);
             rd_data = quotient;        
           end
           else if (insn_rem)begin 
-            branch_taken = 1'b1;
             dividend = (rs1_data[31]) ? (~rs1_data + 32'b1) : rs1_data; 
             divisor = (rs2_data[31]) ? (~rs2_data + 32'b1) : rs2_data;
             if(rs1_data == 32'b0) begin  
@@ -522,7 +519,6 @@ module DatapathMultiCycle (
             end
           end 
           else if(insn_remu)begin
-            branch_taken = 1'b1;
             dividend = $signed(rs1_data); 
             divisor =  $unsigned(rs2_data);
             rd_data = remainder;
@@ -622,6 +618,7 @@ module DatapathMultiCycle (
           end 
         end 
         default: begin
+          we = 1'b0;
           illegal_insn = 1'b1;
         end
       endcase
@@ -710,7 +707,7 @@ module MemorySingleCycle #(
   always @(posedge clock_mem) begin
     if (rst) begin
     end else begin
-      insn_from_imem <= mem[{pc_to_imem[AddrMsb:AddrLsb]}];
+      insn_from_imem <= [{pc_to_imem[AddrMsb:AddrLsb]}];
     end
   end
 
