@@ -707,7 +707,7 @@ module MemorySingleCycle #(
   always @(posedge clock_mem) begin
     if (rst) begin
     end else begin
-      insn_from_imem <= [{pc_to_imem[AddrMsb:AddrLsb]}];
+      insn_from_imem <= mem[{pc_to_imem[AddrMsb:AddrLsb]}];
     end
   end
 
