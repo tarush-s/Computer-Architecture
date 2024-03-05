@@ -465,7 +465,7 @@ module DatapathSingleCycle (
             mulitply_result = ($signed(rs1_data) * $signed(rs2_data));
             rd_data = mulitply_result[63:32];
           end  
-          else if(insn_mulhsu)begin //recheck
+          else if(insn_mulhsu)begin 
             multiplicand = (rs1_data[31]) ? (~rs1_data + 32'b1) : rs1_data;
             mulitply_result = (multiplicand * $unsigned(rs2_data));
             if(rs1_data[31]) begin
