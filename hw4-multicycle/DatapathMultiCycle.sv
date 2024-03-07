@@ -191,11 +191,18 @@ module DatapathMultiCycle (
 
   // program counter
   logic [`REG_SIZE] pcNext, pcCurrent;
+  logic divider_counter;
   always @(posedge clk) begin
     if (rst) begin
       pcCurrent <= 32'd0;
     end else begin
-      pcCurrent <= pcNext;
+      if(divider_operation) begin
+        divider_counter <= 1'b1;
+      end
+      else begin 
+        pcCurrent <= pcNext;
+        divider_counter <= 1'b0;
+      end  
     end
   end
   assign pc_to_imem = pcCurrent;
@@ -249,6 +256,8 @@ module DatapathMultiCycle (
   logic branch_taken;
   // Control signals for Jal and Jalr
   logic [`REG_SIZE] pcIntermmidiate;
+  // Flag for division operation 
+  logic divider_operation;
 
   always_comb begin
       // assign default values to control signals
@@ -271,6 +280,7 @@ module DatapathMultiCycle (
       multiplicand = 32'b0;
       multiplier = 32'b0;
       store_result = 64'b0;
+      divider_operation = 1'b0;
       CLA_A = $signed(rs1_data);
       CLA_B = $signed(rs2_data);
       address_datamemory = 32'b0; 
@@ -487,7 +497,14 @@ module DatapathMultiCycle (
             mulitply_result = ($unsigned(rs1_data) *  $unsigned(rs2_data));
             rd_data = mulitply_result[63:32];
           end
-          else if(insn_div)begin 
+          else if(insn_div)begin
+            // this operation takes two cycles 
+            if(divider_counter) begin 
+              divider_operation = 1'b0;
+            end 
+            else begin 
+              divider_operation = 1'b1;
+            end
             dividend = (rs1_data[31]) ? (~rs1_data + 32'b1) : rs1_data; 
             divisor = (rs2_data[31]) ? (~rs2_data + 32'b1) : rs2_data;
             if(( rs1_data == 0 | rs2_data == 0)) begin  
@@ -501,11 +518,25 @@ module DatapathMultiCycle (
             end 
           end
           else if(insn_divu)begin 
+            // this operation takes two cycles
+            if(divider_counter) begin 
+              divider_operation = 1'b0;
+            end 
+            else begin 
+              divider_operation = 1'b1;
+            end
             dividend = $signed(rs1_data); 
             divisor =  $unsigned(rs2_data);
             rd_data = quotient;        
           end
           else if (insn_rem)begin 
+            // this operation takes two cycles
+            if(divider_counter) begin 
+              divider_operation = 1'b0;
+            end 
+            else begin 
+              divider_operation = 1'b1;
+            end
             dividend = (rs1_data[31]) ? (~rs1_data + 32'b1) : rs1_data; 
             divisor = (rs2_data[31]) ? (~rs2_data + 32'b1) : rs2_data;
             if(rs1_data == 32'b0) begin  
@@ -519,6 +550,13 @@ module DatapathMultiCycle (
             end
           end 
           else if(insn_remu)begin
+            // this operation takes two cycles
+            if(divider_counter) begin 
+              divider_operation = 1'b0;
+            end 
+            else begin 
+              divider_operation = 1'b1;
+            end
             dividend = $signed(rs1_data); 
             divisor =  $unsigned(rs2_data);
             rd_data = remainder;
@@ -631,9 +669,9 @@ module DatapathMultiCycle (
   assign store_data_to_dmem = data_store;
   assign store_we_to_dmem = we_datamem;
   assign addr_to_dmem = address_datamemory;
-  // set halt signal
+  // assign halt signal
   assign halt = halt_signal;
-
+  //instantiate custom modules begins here 
   divider_unsigned_pipelined D1(.clk(clk),
                                 .rst(rst),
                                 .i_dividend(dividend),
@@ -655,6 +693,7 @@ module DatapathMultiCycle (
               .clk(clk),
               .we(we),
               .rst(rst));
+//instantiate custom modules ends here 
 
 
 endmodule
