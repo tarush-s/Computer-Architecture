@@ -11,7 +11,7 @@
 `ifndef RISCV_FORMAL
 `include "../hw2b/cla.sv"
 `include "divider_unsigned_pipelined.sv"
-`include "../hw3-singlecycle/RvDisassembler.sv"
+//`include "../hw3-singlecycle/RvDisassembler.sv"
 `endif
 
 module RegFile (
@@ -176,17 +176,17 @@ module DatapathMultiCycle (
 
   // synthesis translate_off
   // this code is only for simulation, not synthesis
-  `include "RvDisassembler.sv"
-  string disasm_string;
-  always_comb begin
-    disasm_string = rv_disasm(insn_from_imem);
-  end
-  // HACK: get disasm_string to appear in GtkWave, which can apparently show only wire/logic...
-  wire [(8*32)-1:0] disasm_wire;
-  genvar i;
-  for (i = 0; i < 32; i = i + 1) begin : gen_disasm
-    assign disasm_wire[(((i+1))*8)-1:((i)*8)] = disasm_string[31-i];
-  end
+  // `include "RvDisassembler.sv"
+  // string disasm_string;
+  // always_comb begin
+  //   disasm_string = rv_disasm(insn_from_imem);
+  // end
+  // // HACK: get disasm_string to appear in GtkWave, which can apparently show only wire/logic...
+  // wire [(8*32)-1:0] disasm_wire;
+  // genvar i;
+  // for (i = 0; i < 32; i = i + 1) begin : gen_disasm
+  //   assign disasm_wire[(((i+1))*8)-1:((i)*8)] = disasm_string[31-i];
+  // end
   // synthesis translate_on
 
   // program counter
