@@ -117,7 +117,6 @@ typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
   cycle_status_e cycle_status;
-  logic [`OPCODE_SIZE] opcode;
   logic [`REG_SIZE] operand1;
   logic [`REG_SIZE] operand2;
   logic [`REG_SIZE] imm_value;
@@ -128,11 +127,10 @@ typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
   cycle_status_e cycle_status;
-  logic [`OPCODE_SIZE] opcode;
   logic [`REG_SIZE] operand1;
   logic [`REG_SIZE] operand2;
   logic [`REG_SIZE] imm_value;
-  logic [`REG_SIZE] result;
+  logic [`REG_SIZE] execute_result;
   logic load_store;
 } stage_memory_t;
 
@@ -141,13 +139,12 @@ typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
   cycle_status_e cycle_status;
-  logic [`OPCODE_SIZE] opcode;
   logic [`REG_SIZE] operand1;
   logic [`REG_SIZE] operand2;
   logic [`REG_SIZE] imm_value;
-  logic [`REG_SIZE] result;
+  logic [`REG_SIZE] execute_result;
   logic load_store;
-  logic [`REG_SIZE] memory_out;
+  logic [`REG_SIZE] memory_result;
 } stage_writeback_t;
 
 module DatapathPipelined (
@@ -254,7 +251,6 @@ module DatapathPipelined (
           insn: f_insn,
           cycle_status: f_cycle_status
         };
-        //d_insn <= decode_state.insn;
         d_cycle_status <= CYCLE_NO_STALL;
       end
     end
@@ -348,7 +344,7 @@ module DatapathPipelined (
     OpcodeRegReg: begin 
       operand1 = rs1_data;
       operand2 = rs2_data;
-      imm_val = imm_i_ext;
+      imm_val = imm_i_sext;
     end 
     OpcodeAuipc: begin 
       operand1 = rs1_data;
@@ -414,7 +410,6 @@ module DatapathPipelined (
   logic [`REG_SIZE] x_pc_current;
   logic [`REG_SIZE] x_insn;
   cycle_status_e x_cycle_status;
-  logic [`OPCODE_SIZE] x_opcode;
   logic [`REG_SIZE] x_operand1;
   logic [`REG_SIZE] x_operand2;
   logic [`REG_SIZE] x_imm;
@@ -426,7 +421,6 @@ module DatapathPipelined (
         pc: 0,
         insn: 0,
         cycle_status: CYCLE_RESET,
-        opcode : 0,
         operand1 : 0,
         operand2 : 0,
         imm_value : 0
@@ -437,34 +431,43 @@ module DatapathPipelined (
         pc: d_pc_current,
         insn: d_insn,
         cycle_status: CYCLE_NO_STALL,
-        opcode : insn_opcode,
         operand1 : operand1,
         operand2 : operand2,
         imm_value : imm_val
-      };
-      
-      // x_opcode <= execute_state.opcode;
-      // x_operand1 <= execute_state.operand1;
-      // x_operand2 <= execute_state.operand2;
-      // x_imm <= execute_state.imm_value;
+      };     
       x_cycle_status <= CYCLE_NO_STALL;
     end 
   end 
-  assign x_opcode = execute_state.opcode;
   assign x_operand1 = execute_state.operand1;
   assign x_operand2 = execute_state.operand2;
   assign x_imm = execute_state.imm_value;
   assign x_insn = execute_state.insn;
   assign x_pc_current = execute_state.pc;
-
+  // control sognals for the combinational logic 
   logic [`REG_SIZE] execute_result; 
   logic load_or_store;
   logic x_illegal_insn;
-
+  logic [6:0] x_insn_funct7;
+  logic [4:0] x_insn_rs2;
+  logic [4:0] x_insn_rs1;
+  logic [2:0] x_insn_funct3;
+  logic [4:0] x_insn_rd;
+  logic [`OPCODE_SIZE] x_opcode;
+  // control signal for the ALU 
+  logic [`REG_SIZE] cla_a;
+  logic [`REG_SIZE] cla_b;
+  logic cin;
+  logic [`REG_SIZE] sum_out;
+  
   always_comb begin
+    // decode the instruction 
+    {x_insn_funct7, x_insn_rs2, x_insn_rs1, x_insn_funct3, x_insn_rd, x_opcode} = x_insn;
     execute_result = 32'b0;
     load_or_store = 1'b0;
-    x_illegal_insn = 1'b1;
+    x_illegal_insn = 1'b0;
+    cla_a = $signed(x_operand1);
+    cla_b = $signed(x_operand2);
+    cin = 1'b0;
 
     case(x_opcode)
     OpcodeLui: begin
@@ -483,16 +486,77 @@ module DatapathPipelined (
       else if(x_insn[14:12] == 3'b010) begin // slti
         execute_result = (x_operand1 < x_imm) ? 32'b1 : 32'b0;
       end 
+      else if(x_insn[14:12] == 3'b011) begin // sltiu
+        execute_result = (x_operand1 < $unsigned(x_imm)) ? 32'b1 : 32'b0;
+      end
+      else if(x_insn[14:12] == 3'b100) begin // xori
+        execute_result = ($signed(x_operand1) ^ x_imm);
+      end  
+      else if(x_insn[14:12] == 3'b110) begin // ori
+        execute_result = ($signed(x_operand1) | x_imm);
+      end 
+      else if(x_insn[14:12] == 3'b111) begin // andi
+        execute_result = ($signed(x_operand1) & x_imm);
+      end       
+      else if((x_insn[14:12] == 3'b001) && (x_insn[31:25] == 7'd0)) begin // slli
+        execute_result = (x_operand1 << x_imm[4:0]);
+      end  
+      else if((x_insn[14:12] == 3'b101) && (x_insn[31:25] == 7'd0)) begin // srli
+        execute_result = (x_operand1 >> x_imm[4:0]);
+      end  
+      else if((x_insn[14:12] == 3'b101) && (x_insn[31:25] == 7'd0)) begin // srai
+        execute_result = ($signed(x_operand1) >>> x_imm[4:0]);
+      end  
       else begin 
       end 
     end 
     OpcodeRegReg: begin
-    end 
+      if((x_insn[14:12] == 3'b000) && (x_insn[31:25] == 7'd0))begin // add
+        execute_result = sum_out;
+      end 
+      else if((x_insn[14:12] == 3'b000) && (x_insn[31:25] == 7'b0100000))begin // sub
+        cla_a = x_operand1;
+        cla_b = ~x_operand2;
+        cin = 1'b1;
+        execute_result = sum_out;
+      end 
+      else if((x_insn[14:12] == 3'b001) && (x_insn[31:25] == 7'd0))begin // sll
+        execute_result = (x_operand1 << x_operand2[4:0]);
+      end 
+      else if((x_insn[14:12] == 3'b001) && (x_insn[31:25] == 7'd0))begin // slt
+        execute_result = ($signed(x_operand1) < $signed(x_operand2))? 32'b1 : 32'b0;
+      end
+      else if((x_insn[14:12] == 3'b010) && (x_insn[31:25] == 7'd0))begin // sltu
+        execute_result = (x_operand1 < $unsigned(x_operand2))? 32'b1 : 32'b0;
+      end
+      else if((x_insn[14:12] == 3'b100) && (x_insn[31:25] == 7'd0))begin // xor
+        execute_result = (x_operand1 ^ x_operand2);
+      end
+      else if((x_insn[14:12] == 3'b101) && (x_insn[31:25] == 7'd0))begin // srl
+        execute_result = (x_operand1 >> (x_operand2[4:0]));
+      end
+      else if((x_insn[14:12] == 3'b101) && (x_insn[31:25] == 7'b0100000))begin // sra
+        execute_result = ($signed(x_operand1) >>> (x_operand2[4:0]));
+      end
+      else if((x_insn[14:12] == 3'b110) && (x_insn[31:25] == 7'd0))begin // or
+        execute_result = (x_operand1 | x_operand2);
+      end
+      else if((x_insn[14:12] == 3'b111) && (x_insn[31:25] == 7'd0))begin // and
+        execute_result = (x_operand1 & x_operand2);
+      end
+      else begin 
+      end 
+    end     
     default: begin 
       x_illegal_insn = 1'b1;
     end  
     endcase
   end 
+
+  // cla al(.a(cla_a),
+  //         .b(cla_b),
+  //         .cin(cin),
+  //         .sum(sum_out));
 
   // for simulation 
   Disasm #(
@@ -507,7 +571,6 @@ module DatapathPipelined (
   logic [`REG_SIZE] m_pc_current;
   logic [`REG_SIZE] m_insn;
   cycle_status_e m_cycle_status;
-  logic [`OPCODE_SIZE] m_opcode;
   logic [`REG_SIZE] m_operand1;
   logic [`REG_SIZE] m_operand2;
   logic [`REG_SIZE] m_imm;
@@ -522,11 +585,10 @@ module DatapathPipelined (
         pc: 0,
         insn: 0,
         cycle_status: CYCLE_RESET,
-        opcode : 0,
         operand1 : 0,
         operand2 : 0,
         imm_value : 0,
-        result : 0,
+        execute_result : 0,
         load_store : 0
       };
     end 
@@ -535,30 +597,21 @@ module DatapathPipelined (
         pc: x_pc_current,
         insn: x_insn,
         cycle_status: CYCLE_NO_STALL,
-        opcode : x_opcode,
         operand1 : x_operand1,
         operand2 : x_operand2,
         imm_value : x_imm,
-        result : execute_result,
+        execute_result : execute_result,
         load_store : load_or_store
       };
-      
-      // m_opcode <= memory_state.opcode;
-      // m_operand1 <= memory_state.operand1;
-      // m_operand2 <= memory_state.operand2;
-      // m_imm <= memory_state.imm_value;
-      // m_cycle_status <= CYCLE_NO_STALL;
-      
-      // m_load_store <= memory_state.load_store;
+      m_cycle_status <= CYCLE_NO_STALL;
     end 
   end 
-  assign m_opcode = memory_state.opcode;
+
   assign m_operand1 = memory_state.operand1;
   assign m_operand2 = memory_state.operand2;
-  assign m_imm = memory_state.imm_value;
-  assign m_cycle_status = CYCLE_NO_STALL;     
+  assign m_imm = memory_state.imm_value;     
   assign m_load_store = memory_state.load_store;
-  assign m_in = memory_state.result;
+  assign m_in = memory_state.execute_result;
   assign m_insn = memory_state.insn;
   assign m_pc_current = memory_state.pc;
 
@@ -566,8 +619,17 @@ module DatapathPipelined (
   logic [`REG_SIZE] ms_load_data_from_dmem;
   logic [`REG_SIZE] ms_store_data_to_dmem;
   logic [3:0] ms_store_we_to_dmem;
+  logic [6:0] m_insn_funct7;
+  logic [4:0] m_insn_rs2;
+  logic [4:0] m_insn_rs1;
+  logic [2:0] m_insn_funct3;
+  logic [4:0] m_insn_rd;
+  logic [`OPCODE_SIZE] m_opcode;
   
   always_comb begin
+    // decode the instruction 
+    {m_insn_funct7, m_insn_rs2, m_insn_rs1, m_insn_funct3, m_insn_rd, m_opcode} = m_insn;
+
     m_result = 32'b0;
     if(m_load_store) begin
       // implement load store here
@@ -590,7 +652,6 @@ module DatapathPipelined (
   logic [`REG_SIZE] w_pc_current;
   logic [`REG_SIZE] w_insn;
   cycle_status_e w_cycle_status;
-  logic [`OPCODE_SIZE] w_opcode;
   logic [`REG_SIZE] w_operand1;
   logic [`REG_SIZE] w_operand2;
   logic [`REG_SIZE] w_imm;
@@ -604,13 +665,12 @@ module DatapathPipelined (
         pc: 0,
         insn: 0,
         cycle_status: CYCLE_RESET,
-        opcode : 0,
         operand1 : 0,
         operand2 : 0,
         imm_value : 0,
-        result : 0,
+        execute_result : 0,
         load_store : 0,
-        memory_out : 0
+        memory_result : 0
       };
     end 
     else begin 
@@ -618,29 +678,35 @@ module DatapathPipelined (
         pc: m_pc_current,
         insn: m_insn,
         cycle_status: CYCLE_NO_STALL,
-        opcode : m_opcode,
         operand1 : m_operand1,
         operand2 : m_operand2,
         imm_value : m_imm,
-        result : m_in,
+        execute_result : m_in,
         load_store : m_load_store,
-        memory_out : m_result
+        memory_result : m_result
       };
-      
-      w_opcode <= writeback_state.opcode;
-      w_operand1 <= writeback_state.operand1;
-      w_operand2 <= writeback_state.operand2;
-      w_imm <= writeback_state.imm_value;
       w_cycle_status <= CYCLE_NO_STALL;
-      
-      w_load_store <= writeback_state.load_store;
     end 
   end 
-  assign w_in = writeback_state.memory_out;
+  assign w_operand1 = writeback_state.operand1;
+  assign w_operand2 = writeback_state.operand2;
+  assign w_imm = writeback_state.imm_value;
+  assign w_load_store = writeback_state.load_store;
+  assign w_in = writeback_state.memory_result;
   assign w_insn = writeback_state.insn;
   assign w_pc_current = writeback_state.pc;
+  
+  logic [6:0] w_insn_funct7;
+  logic [4:0] w_insn_rs2;
+  logic [4:0] w_insn_rs1;
+  logic [2:0] w_insn_funct3;
+  logic [4:0] w_insn_rd;
+  logic [`OPCODE_SIZE] w_opcode;
 
   always_comb begin 
+    // decode the instruction 
+    {w_insn_funct7, w_insn_rs2, w_insn_rs1, w_insn_funct3, w_insn_rd, w_opcode} = w_insn;
+
     we = 1'b0;
     rd_data = 32'b0;
     rd = w_insn[11:7];
