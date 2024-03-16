@@ -117,6 +117,10 @@ typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
   cycle_status_e cycle_status;
+  logic wx_1;
+  logic wx_2;
+  logic mx_1;
+  logic mx_2;
   logic [`REG_SIZE] operand1;
   logic [`REG_SIZE] operand2;
   logic [`REG_SIZE] imm_value;
@@ -127,6 +131,10 @@ typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
   cycle_status_e cycle_status;
+  // logic wx_1;
+  // logic wx_2;
+  // logic mx_1;
+  // logic mx_2;
   logic [`REG_SIZE] operand1;
   logic [`REG_SIZE] operand2;
   logic [`REG_SIZE] imm_value;
@@ -139,6 +147,10 @@ typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
   cycle_status_e cycle_status;
+  // logic wx_1;
+  // logic wx_2;
+  // logic mx_1;
+  // logic mx_2;
   logic [`REG_SIZE] operand1;
   logic [`REG_SIZE] operand2;
   logic [`REG_SIZE] imm_value;
@@ -295,13 +307,21 @@ module DatapathPipelined (
   logic [`REG_SIZE] imm_j_sext;
   logic [`REG_SIZE] imm_u_ext;
   logic d_illegal_insn;
-  
+  logic wx_rs1_bypass;
+  logic wx_rs2_bypass; 
+  logic mx_rs1_bypass;
+  logic mx_rs2_bypass;
+
   always_comb begin
     //assign default values 
     //we = 1'b0;
     operand1 = 32'b0;
     operand2 = 32'b0;
     imm_val = 32'b0;
+    wx_rs1_bypass = 1'b0;
+    wx_rs2_bypass = 1'b0;
+    mx_rs1_bypass = 1'b0;
+    mx_rs2_bypass = 1'b0;
     d_illegal_insn = 1'b0;
     // decode the instruction 
     {insn_funct7, insn_rs2, insn_rs1, insn_funct3, insn_rd, insn_opcode} = d_insn;
@@ -329,6 +349,20 @@ module DatapathPipelined (
 
     rs1 = insn_rs1;
     rs2 = insn_rs2;
+
+    //Hazard detection 
+    if(insn_rs1 == x_insn_rd)begin
+       wx_rs1_bypass = 1'b1;
+    end 
+    if(insn_rs2 == x_insn_rd)begin
+      wx_rs2_bypass = 1'b1; 
+    end  
+    if(insn_rs1 == m_insn_rd)begin
+      mx_rs1_bypass = 1'b1; 
+    end 
+    if(insn_rs2 == m_insn_rd)begin
+      mx_rs2_bypass = 1'b1; 
+    end 
 
     case(insn_opcode)
     OpcodeLui: begin
@@ -412,15 +446,25 @@ module DatapathPipelined (
   cycle_status_e x_cycle_status;
   logic [`REG_SIZE] x_operand1;
   logic [`REG_SIZE] x_operand2;
+  logic [`REG_SIZE] x_operand1_temp;
+  logic [`REG_SIZE] x_operand2_temp;
   logic [`REG_SIZE] x_imm;
+  logic d_mx_rs1_bypass;
+  logic d_mx_rs2_bypass;
+  logic d_wx_rs1_bypass;
+  logic d_wx_rs2_bypass;
 
   stage_execute_t execute_state;
   always_ff@ (posedge clk)begin
     if(rst) begin
       execute_state <= '{
-        pc: 0,
-        insn: 0,
-        cycle_status: CYCLE_RESET,
+        pc : 0,
+        insn : 0,
+        cycle_status : CYCLE_RESET,
+        wx_1 : 0,
+        wx_2 : 0,
+        mx_1 : 0,
+        mx_2 : 0,
         operand1 : 0,
         operand2 : 0,
         imm_value : 0
@@ -431,6 +475,10 @@ module DatapathPipelined (
         pc: d_pc_current,
         insn: d_insn,
         cycle_status: CYCLE_NO_STALL,
+        wx_1 : wx_rs1_bypass,
+        wx_2 : wx_rs2_bypass,
+        mx_1 : mx_rs1_bypass,
+        mx_2 : mx_rs2_bypass,
         operand1 : operand1,
         operand2 : operand2,
         imm_value : imm_val
@@ -438,8 +486,12 @@ module DatapathPipelined (
       x_cycle_status <= CYCLE_NO_STALL;
     end 
   end 
-  assign x_operand1 = execute_state.operand1;
-  assign x_operand2 = execute_state.operand2;
+  assign d_mx_rs1_bypass = execute_state.mx_1;
+  assign d_mx_rs2_bypass = execute_state.mx_2;
+  assign d_wx_rs1_bypass = execute_state.wx_1;
+  assign d_wx_rs2_bypass = execute_state.wx_2;
+  assign x_operand1_temp = execute_state.operand1;
+  assign x_operand2_temp = execute_state.operand2;
   assign x_imm = execute_state.imm_value;
   assign x_insn = execute_state.insn;
   assign x_pc_current = execute_state.pc;
@@ -457,17 +509,33 @@ module DatapathPipelined (
   logic [`REG_SIZE] cla_a;
   logic [`REG_SIZE] cla_b;
   logic cin;
-  logic [`REG_SIZE] sum_out;
+  logic [`REG_SIZE] sum;
   
   always_comb begin
     // decode the instruction 
     {x_insn_funct7, x_insn_rs2, x_insn_rs1, x_insn_funct3, x_insn_rd, x_opcode} = x_insn;
-    execute_result = 32'b0;
+    x_operand1 = x_operand1_temp;
+    x_operand2 = x_operand2_temp;
+    // handle hazards 
+    if(d_mx_rs1_bypass)begin
+      x_operand1 =  m_in;
+    end 
+    if(d_mx_rs2_bypass)begin
+      x_operand2 =  m_in;
+    end 
+    if(d_wx_rs1_bypass)begin
+      x_operand1 = w_in; 
+    end 
+    if(d_wx_rs2_bypass)begin 
+      x_operand2 = w_in;
+    end 
+  
     load_or_store = 1'b0;
     x_illegal_insn = 1'b0;
-    cla_a = $signed(x_operand1);
-    cla_b = $signed(x_operand2);
+    execute_result = 32'b0;
     cin = 1'b0;
+    cla_a = 32'b0;
+    cla_b = 32'b0;
 
     case(x_opcode)
     OpcodeLui: begin
@@ -512,14 +580,17 @@ module DatapathPipelined (
     end 
     OpcodeRegReg: begin
       if((x_insn[14:12] == 3'b000) && (x_insn[31:25] == 7'd0))begin // add
-        execute_result = sum_out;
+        // cla_a = $signed(x_operand1);
+        // cla_b = $signed(x_operand2);
+        // cin = 1'b0;
+        execute_result = $signed(x_operand1) + $signed(x_operand2);
       end 
       else if((x_insn[14:12] == 3'b000) && (x_insn[31:25] == 7'b0100000))begin // sub
-        cla_a = x_operand1;
-        cla_b = ~x_operand2;
-        cin = 1'b1;
-        execute_result = sum_out;
-      end 
+        // cla_a = x_operand1;
+        // cla_b = ~x_operand2;
+        // cin = 1'b1;
+        execute_result = x_operand1 + ~x_operand2 + 32'b1;
+       end 
       else if((x_insn[14:12] == 3'b001) && (x_insn[31:25] == 7'd0))begin // sll
         execute_result = (x_operand1 << x_operand2[4:0]);
       end 
@@ -553,10 +624,10 @@ module DatapathPipelined (
     endcase
   end 
 
-  // cla al(.a(cla_a),
+  // cla a1(.a(cla_a),
   //         .b(cla_b),
   //         .cin(cin),
-  //         .sum(sum_out));
+  //         .sum(sum));
 
   // for simulation 
   Disasm #(
@@ -577,6 +648,11 @@ module DatapathPipelined (
   logic [`REG_SIZE] m_result;
   logic [`REG_SIZE] m_in;
   logic m_load_store;
+  // logic m_mx_rs1_bypass;
+  // logic m_mx_rs2_bypass;
+  // logic m_wx_rs1_bypass;
+  // logic m_wx_rs2_bypass;
+
 
   stage_memory_t memory_state;
   always_ff@ (posedge clk)begin
@@ -585,6 +661,10 @@ module DatapathPipelined (
         pc: 0,
         insn: 0,
         cycle_status: CYCLE_RESET,
+        // wx_1 : 0,
+        // wx_2 : 0,
+        // mx_1 : 0,
+        // mx_2 : 0,
         operand1 : 0,
         operand2 : 0,
         imm_value : 0,
@@ -597,6 +677,10 @@ module DatapathPipelined (
         pc: x_pc_current,
         insn: x_insn,
         cycle_status: CYCLE_NO_STALL,
+        // wx_1 : d_wx_rs1_bypass,
+        // wx_2 : d_wx_rs2_bypass,
+        // mx_1 : d_mx_rs1_bypass,
+        // mx_2 : 0,
         operand1 : x_operand1,
         operand2 : x_operand2,
         imm_value : x_imm,
