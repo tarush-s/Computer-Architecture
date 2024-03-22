@@ -109,6 +109,8 @@ typedef enum {
 typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
+  logic wd_1;
+  logic wd_2;
   cycle_status_e cycle_status;
 } stage_decode_t;
 
@@ -116,6 +118,7 @@ typedef struct packed {
 typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
+  logic [`OPCODE_SIZE] op_code;
   cycle_status_e cycle_status;
   logic wx_1;
   logic wx_2;
@@ -131,10 +134,6 @@ typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
   cycle_status_e cycle_status;
-  // logic wx_1;
-  // logic wx_2;
-  // logic mx_1;
-  // logic mx_2;
   logic [`REG_SIZE] operand1;
   logic [`REG_SIZE] operand2;
   logic [`REG_SIZE] imm_value;
@@ -147,10 +146,6 @@ typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
   cycle_status_e cycle_status;
-  // logic wx_1;
-  // logic wx_2;
-  // logic mx_1;
-  // logic mx_2;
   logic [`REG_SIZE] operand1;
   logic [`REG_SIZE] operand2;
   logic [`REG_SIZE] imm_value;
@@ -229,6 +224,35 @@ module DatapathPipelined (
   assign pc_to_imem = f_pc_current;
   assign f_insn = insn_from_imem;
 
+  logic [6:0] f_insn_funct7;
+  logic [4:0] f_insn_rs2;
+  logic [4:0] f_insn_rs1;
+  logic [2:0] f_insn_funct3;
+  logic [4:0] f_insn_rd;
+  logic [`OPCODE_SIZE] f_insn_opcode;
+
+  logic wd_rs1_bypass;
+  logic wd_rs2_bypass;
+  
+  always_comb begin
+    wd_rs1_bypass = 1'b0;
+    wd_rs2_bypass = 1'b0;
+    //decode the instruction at fetch stage 
+    {f_insn_funct7, f_insn_rs2, f_insn_rs1, f_insn_funct3, f_insn_rd, f_insn_opcode} = f_insn;
+
+    if((f_insn_rs1 == m_insn_rd) && (f_insn_rs1 != 5'b0))begin
+      wd_rs1_bypass = 1'b1; 
+    end 
+    else if((f_insn_rs2 == m_insn_rd) && (f_insn_rs2 != 5'b0))begin
+      wd_rs2_bypass = 1'b1; 
+    end 
+    else begin
+       wd_rs1_bypass = 1'b0;
+       wd_rs2_bypass = 1'b0;
+    end 
+
+ end 
+
   // Here's how to disassemble an insn into a string you can view in GtkWave.
   // Use PREFIX to provide a 1-character tag to identify which stage the insn comes from.
   Disasm #(
@@ -244,6 +268,8 @@ module DatapathPipelined (
 
   logic [`REG_SIZE] d_pc_current;
   logic [`REG_SIZE] d_insn;
+  logic d_wd1_bypass;
+  logic d_wd2_bypass;
   cycle_status_e d_cycle_status;
   // this shows how to package up state in a `struct packed`, and how to pass it between stages
   stage_decode_t decode_state;
@@ -252,6 +278,8 @@ module DatapathPipelined (
       decode_state <= '{
         pc: 0,
         insn: 0,
+        wd_1: 0,
+        wd_2: 0,
         cycle_status: CYCLE_RESET
       };
        d_cycle_status <= CYCLE_RESET;
@@ -261,6 +289,8 @@ module DatapathPipelined (
         decode_state <= '{
           pc: f_pc_current,
           insn: f_insn,
+          wd_1: wd_rs1_bypass,
+          wd_2: wd_rs2_bypass,
           cycle_status: f_cycle_status
         };
         d_cycle_status <= CYCLE_NO_STALL;
@@ -269,10 +299,14 @@ module DatapathPipelined (
   end
   assign d_insn = decode_state.insn;
   assign d_pc_current = decode_state.pc;
+  assign d_wd1_bypass = decode_state.wd_1;
+  assign d_wd2_bypass = decode_state.wd_2;
 
   //combinational logic between pc and decode stage 
   logic [`REG_SIZE] operand1;   // this value will store rs1_data 
   logic [`REG_SIZE] operand2;   // this value will store rs2_data 
+  logic [`REG_SIZE] final_operand1;
+  logic [`REG_SIZE] final_operand2;
   logic [`REG_SIZE] imm_val;    // this will store the immmidiate vlue nedded 
   logic [`REG_SIZE] rd_data;    // this will store the value to be written into the reg file
   // necessary signals for the reg file module
@@ -312,9 +346,9 @@ module DatapathPipelined (
   logic mx_rs1_bypass;
   logic mx_rs2_bypass;
 
+
   always_comb begin
     //assign default values 
-    //we = 1'b0;
     operand1 = 32'b0;
     operand2 = 32'b0;
     imm_val = 32'b0;
@@ -349,20 +383,6 @@ module DatapathPipelined (
 
     rs1 = insn_rs1;
     rs2 = insn_rs2;
-
-    //Hazard detection 
-    if(insn_rs1 == x_insn_rd)begin
-       wx_rs1_bypass = 1'b1;
-    end 
-    if(insn_rs2 == x_insn_rd)begin
-      wx_rs2_bypass = 1'b1; 
-    end  
-    if(insn_rs1 == m_insn_rd)begin
-      mx_rs1_bypass = 1'b1; 
-    end 
-    if(insn_rs2 == m_insn_rd)begin
-      mx_rs2_bypass = 1'b1; 
-    end 
 
     case(insn_opcode)
     OpcodeLui: begin
@@ -420,6 +440,34 @@ module DatapathPipelined (
       d_illegal_insn = 1'b1;
     end 
     endcase
+
+    //Hazard detection 
+    if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0))begin
+      mx_rs1_bypass = 1'b1;
+    end  
+    else if((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0))begin
+      mx_rs2_bypass = 1'b1; 
+    end  
+    else if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0))begin
+      wx_rs1_bypass = 1'b1; 
+    end 
+    else if((insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0))begin
+      wx_rs2_bypass = 1'b1; 
+    end 
+    else begin 
+      wx_rs1_bypass = 1'b0;
+      wx_rs2_bypass = 1'b0;
+      mx_rs1_bypass = 1'b0;
+      mx_rs1_bypass = 1'b0;
+    end 
+
+    // handle wd bypassing 
+    if(d_wd1_bypass)begin 
+      operand1 = w_in;
+    end
+    if(d_wd2_bypass)begin 
+      operand2 = w_in;
+    end 
   end 
 
   RegFile rf(.rd(rd),
@@ -431,6 +479,7 @@ module DatapathPipelined (
              .clk(clk),
              .we(we),
              .rst(rst));
+
   // for simulation 
   Disasm #(
       .PREFIX("D")
@@ -460,6 +509,7 @@ module DatapathPipelined (
       execute_state <= '{
         pc : 0,
         insn : 0,
+        op_code : 0,
         cycle_status : CYCLE_RESET,
         wx_1 : 0,
         wx_2 : 0,
@@ -474,6 +524,7 @@ module DatapathPipelined (
       execute_state <= '{
         pc: d_pc_current,
         insn: d_insn,
+        op_code : insn_opcode,
         cycle_status: CYCLE_NO_STALL,
         wx_1 : wx_rs1_bypass,
         wx_2 : wx_rs2_bypass,
@@ -493,6 +544,7 @@ module DatapathPipelined (
   assign x_operand1_temp = execute_state.operand1;
   assign x_operand2_temp = execute_state.operand2;
   assign x_imm = execute_state.imm_value;
+  assign x_opcode = execute_state.op_code;
   assign x_insn = execute_state.insn;
   assign x_pc_current = execute_state.pc;
   // control sognals for the combinational logic 
@@ -505,6 +557,7 @@ module DatapathPipelined (
   logic [2:0] x_insn_funct3;
   logic [4:0] x_insn_rd;
   logic [`OPCODE_SIZE] x_opcode;
+  logic [`OPCODE_SIZE] x_opcode_ignore;
   // control signal for the ALU 
   logic [`REG_SIZE] cla_a;
   logic [`REG_SIZE] cla_b;
@@ -513,7 +566,7 @@ module DatapathPipelined (
   
   always_comb begin
     // decode the instruction 
-    {x_insn_funct7, x_insn_rs2, x_insn_rs1, x_insn_funct3, x_insn_rd, x_opcode} = x_insn;
+    {x_insn_funct7, x_insn_rs2, x_insn_rs1, x_insn_funct3, x_insn_rd, x_opcode_ignore} = x_insn;
     x_operand1 = x_operand1_temp;
     x_operand2 = x_operand2_temp;
     // handle hazards 
@@ -524,7 +577,7 @@ module DatapathPipelined (
       x_operand2 =  m_in;
     end 
     if(d_wx_rs1_bypass)begin
-      x_operand1 = w_in; 
+       x_operand1 = w_in; 
     end 
     if(d_wx_rs2_bypass)begin 
       x_operand2 = w_in;
@@ -549,7 +602,7 @@ module DatapathPipelined (
     end 
     OpcodeRegImm: begin
       if(x_insn[14:12] == 3'b000) begin //addi
-        execute_result = x_operand1 & x_imm;
+        execute_result = x_operand1 + x_imm;
       end 
       else if(x_insn[14:12] == 3'b010) begin // slti
         execute_result = (x_operand1 < x_imm) ? 32'b1 : 32'b0;
@@ -661,10 +714,6 @@ module DatapathPipelined (
         pc: 0,
         insn: 0,
         cycle_status: CYCLE_RESET,
-        // wx_1 : 0,
-        // wx_2 : 0,
-        // mx_1 : 0,
-        // mx_2 : 0,
         operand1 : 0,
         operand2 : 0,
         imm_value : 0,
@@ -677,10 +726,6 @@ module DatapathPipelined (
         pc: x_pc_current,
         insn: x_insn,
         cycle_status: CYCLE_NO_STALL,
-        // wx_1 : d_wx_rs1_bypass,
-        // wx_2 : d_wx_rs2_bypass,
-        // mx_1 : d_mx_rs1_bypass,
-        // mx_2 : 0,
         operand1 : x_operand1,
         operand2 : x_operand2,
         imm_value : x_imm,
