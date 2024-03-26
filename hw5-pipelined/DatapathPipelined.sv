@@ -138,6 +138,7 @@ typedef struct packed {
   logic [`REG_SIZE] operand2;
   logic [`REG_SIZE] imm_value;
   logic [`REG_SIZE] execute_result;
+  logic branch_taken;
   logic load_store;
 } stage_memory_t;
 
@@ -217,7 +218,14 @@ module DatapathPipelined (
       f_cycle_status <= CYCLE_NO_STALL;
     end else begin
       f_cycle_status <= CYCLE_NO_STALL;
-      f_pc_current <= f_pc_current + 32'd4;
+      if(m_branch_taken == 1'b0)begin // branch is not taken
+        // assume normal operation 
+        f_pc_current <= f_pc_current + 32'd4;
+      end 
+      else begin // branch is takken 
+        // adjust the pc to go back 2 cycles or 8 in value 
+        f_pc_current <= ((f_pc_current -  32'd8) + m_imm);
+      end 
     end
   end
   // send PC to imem
@@ -230,6 +238,7 @@ module DatapathPipelined (
   logic [2:0] f_insn_funct3;
   logic [4:0] f_insn_rd;
   logic [`OPCODE_SIZE] f_insn_opcode;
+  logic [`REG_SIZE] f_insn_branch;
 
   logic wd_rs1_bypass;
   logic wd_rs2_bypass;
@@ -237,9 +246,11 @@ module DatapathPipelined (
   always_comb begin
     wd_rs1_bypass = 1'b0;
     wd_rs2_bypass = 1'b0;
+    f_insn_branch = 32'b0; 
     //decode the instruction at fetch stage 
     {f_insn_funct7, f_insn_rs2, f_insn_rs1, f_insn_funct3, f_insn_rd, f_insn_opcode} = f_insn;
 
+    // handle wd bypassing 
     if((f_insn_rs1 == m_insn_rd) && (f_insn_rs1 != 5'b0))begin
       wd_rs1_bypass = 1'b1; 
     end 
@@ -249,6 +260,14 @@ module DatapathPipelined (
     else begin
        wd_rs1_bypass = 1'b0;
        wd_rs2_bypass = 1'b0;
+    end
+
+    //handle branching 
+    if(branch_taken)begin
+      f_insn_branch = 32'b0; 
+    end  
+    else begin
+      f_insn_branch = f_insn; 
     end 
 
  end 
@@ -288,7 +307,7 @@ module DatapathPipelined (
       begin
         decode_state <= '{
           pc: f_pc_current,
-          insn: f_insn,
+          insn: f_insn_branch,
           wd_1: wd_rs1_bypass,
           wd_2: wd_rs2_bypass,
           cycle_status: f_cycle_status
@@ -297,7 +316,7 @@ module DatapathPipelined (
       end
     end
   end
-  assign d_insn = decode_state.insn;
+  assign d_insn = decode_state.insn; // assign  NOP if branch is taken 
   assign d_pc_current = decode_state.pc;
   assign d_wd1_bypass = decode_state.wd_1;
   assign d_wd2_bypass = decode_state.wd_2;
@@ -345,6 +364,7 @@ module DatapathPipelined (
   logic wx_rs2_bypass; 
   logic mx_rs1_bypass;
   logic mx_rs2_bypass;
+  logic [`REG_SIZE] d_insn_branch;
 
 
   always_comb begin
@@ -357,6 +377,7 @@ module DatapathPipelined (
     mx_rs1_bypass = 1'b0;
     mx_rs2_bypass = 1'b0;
     d_illegal_insn = 1'b0;
+    // branch taken 
     // decode the instruction 
     {insn_funct7, insn_rs2, insn_rs1, insn_funct3, insn_rd, insn_opcode} = d_insn;
     // setup for I, S, B & J type instructions
@@ -441,13 +462,26 @@ module DatapathPipelined (
     end 
     endcase
 
-    //Hazard detection 
-    if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0))begin
+    //Hazard detection
+    if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0))begin
       mx_rs1_bypass = 1'b1;
-    end  
-    else if((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0))begin
       mx_rs2_bypass = 1'b1; 
     end  
+    else if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0))begin 
+      mx_rs1_bypass = 1'b1;
+    end 
+    else if((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0))begin
+      mx_rs2_bypass = 1'b1; 
+    end 
+    else begin
+      mx_rs1_bypass = 1'b0;
+      mx_rs1_bypass = 1'b0;
+    end 
+    
+    if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0))begin 
+      wx_rs1_bypass = 1'b1; 
+      wx_rs2_bypass = 1'b1; 
+    end 
     else if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0))begin
       wx_rs1_bypass = 1'b1; 
     end 
@@ -455,11 +489,11 @@ module DatapathPipelined (
       wx_rs2_bypass = 1'b1; 
     end 
     else begin 
-      wx_rs1_bypass = 1'b0;
-      wx_rs2_bypass = 1'b0;
-      mx_rs1_bypass = 1'b0;
-      mx_rs1_bypass = 1'b0;
-    end 
+        wx_rs1_bypass = 1'b0;
+        wx_rs2_bypass = 1'b0;
+        //mx_rs1_bypass = 1'b0;
+        //mx_rs1_bypass = 1'b0;
+     end 
 
     // handle wd bypassing 
     if(d_wd1_bypass)begin 
@@ -467,6 +501,14 @@ module DatapathPipelined (
     end
     if(d_wd2_bypass)begin 
       operand2 = w_in;
+    end 
+
+    //handle branching 
+    if(branch_taken)begin 
+      d_insn_branch = 32'b0;
+    end
+    else begin 
+      d_insn_branch = d_insn;
     end 
   end 
 
@@ -523,7 +565,7 @@ module DatapathPipelined (
     else begin 
       execute_state <= '{
         pc: d_pc_current,
-        insn: d_insn,
+        insn: d_insn_branch,
         op_code : insn_opcode,
         cycle_status: CYCLE_NO_STALL,
         wx_1 : wx_rs1_bypass,
@@ -545,7 +587,7 @@ module DatapathPipelined (
   assign x_operand2_temp = execute_state.operand2;
   assign x_imm = execute_state.imm_value;
   assign x_opcode = execute_state.op_code;
-  assign x_insn = execute_state.insn;
+  assign x_insn =  execute_state.insn; // add an NOP if the branch is taken 
   assign x_pc_current = execute_state.pc;
   // control sognals for the combinational logic 
   logic [`REG_SIZE] execute_result; 
@@ -563,12 +605,16 @@ module DatapathPipelined (
   logic [`REG_SIZE] cla_b;
   logic cin;
   logic [`REG_SIZE] sum;
+  logic branch_taken;
+  logic [`REG_SIZE] branch_target;
   
   always_comb begin
     // decode the instruction 
     {x_insn_funct7, x_insn_rs2, x_insn_rs1, x_insn_funct3, x_insn_rd, x_opcode_ignore} = x_insn;
     x_operand1 = x_operand1_temp;
     x_operand2 = x_operand2_temp;
+    //handle branching 
+    branch_taken = 1'b0;
     // handle hazards 
     if(d_mx_rs1_bypass)begin
       x_operand1 =  m_in;
@@ -670,13 +716,49 @@ module DatapathPipelined (
       end
       else begin 
       end 
-    end     
+    end    
+    OpcodeBranch: begin
+      if(x_insn[14:12] == 3'b000)begin //beq
+        if($signed(x_operand1) == $signed(x_operand2))begin
+          branch_taken = 1'b1;
+        end 
+      end
+      else if(x_insn[14:12] == 3'b001)begin //bne
+        if(x_operand1 != x_operand2)begin
+          branch_taken = 1'b1;
+        end 
+      end  
+      else if(x_insn[14:12] == 3'b100)begin //blt
+        if($signed(x_operand1) < $signed(x_operand2))begin
+          branch_taken = 1'b1; 
+        end 
+      end  
+      else if(x_insn[14:12] == 3'b101)begin //bge
+        if($signed(x_operand1) >= $signed(x_operand2))begin 
+          branch_taken = 1'b1;
+        end 
+      end  
+      else if(x_insn[14:12] == 3'b110)begin //bltu
+        if($signed(x_operand1) < $unsigned(x_operand2))begin
+          branch_taken = 1'b1;
+        end 
+      end
+      else if(x_insn[14:12] == 3'b111)begin //bgeu
+        if($signed(operand1) >= $unsigned(operand2))begin
+          branch_taken = 1'b1; 
+        end 
+      end
+      else begin
+        branch_taken = 1'b0; 
+      end     
+    end 
     default: begin 
       x_illegal_insn = 1'b1;
     end  
     endcase
   end 
 
+  // have to fix this 
   // cla a1(.a(cla_a),
   //         .b(cla_b),
   //         .cin(cin),
@@ -701,10 +783,7 @@ module DatapathPipelined (
   logic [`REG_SIZE] m_result;
   logic [`REG_SIZE] m_in;
   logic m_load_store;
-  // logic m_mx_rs1_bypass;
-  // logic m_mx_rs2_bypass;
-  // logic m_wx_rs1_bypass;
-  // logic m_wx_rs2_bypass;
+  logic m_branch_taken;
 
 
   stage_memory_t memory_state;
@@ -718,6 +797,7 @@ module DatapathPipelined (
         operand2 : 0,
         imm_value : 0,
         execute_result : 0,
+        branch_taken : 0,
         load_store : 0
       };
     end 
@@ -730,6 +810,7 @@ module DatapathPipelined (
         operand2 : x_operand2,
         imm_value : x_imm,
         execute_result : execute_result,
+        branch_taken : branch_taken,
         load_store : load_or_store
       };
       m_cycle_status <= CYCLE_NO_STALL;
@@ -743,6 +824,7 @@ module DatapathPipelined (
   assign m_in = memory_state.execute_result;
   assign m_insn = memory_state.insn;
   assign m_pc_current = memory_state.pc;
+  assign m_branch_taken = memory_state.branch_taken;
 
   logic [`REG_SIZE] ms_addr_to_dmem;
   logic [`REG_SIZE] ms_load_data_from_dmem;
@@ -839,7 +921,7 @@ module DatapathPipelined (
     we = 1'b0;
     rd_data = 32'b0;
     rd = w_insn[11:7];
-    if((w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore)) begin
+    if((w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (w_insn != 32'b0)) begin
       we = 1'b1;
       rd_data = w_in;
     end 
