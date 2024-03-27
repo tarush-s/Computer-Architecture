@@ -274,11 +274,12 @@ module DatapathPipelined (
 
   // Here's how to disassemble an insn into a string you can view in GtkWave.
   // Use PREFIX to provide a 1-character tag to identify which stage the insn comes from.
+  wire [255:0] f_disasm;
   Disasm #(
       .PREFIX("F")
   ) disasm_0fetch (
       .insn  (f_insn),
-      .disasm()
+      .disasm(f_disasm)
   );
 
   /****************/
@@ -547,11 +548,12 @@ module DatapathPipelined (
              .rst(rst));
 
   // for simulation 
+  wire [255:0] d_disasm;
   Disasm #(
       .PREFIX("D")
   ) disasm_1decode (
       .insn  (decode_state.insn),
-      .disasm()
+      .disasm(d_disasm)
   );
   /*****************/
   /* EXECUTE STAGE */
@@ -682,19 +684,24 @@ module DatapathPipelined (
         execute_result = ($signed(x_operand1) < $signed(x_imm)) ? 32'b1 : 32'b0;
       end 
       else if(x_insn[14:12] == 3'b011) begin // sltiu
-        execute_result = ($signed(x_operand1) < $unsigned(x_imm)) ? 32'b1 : 32'b0;
+        if($signed(x_operand1) < $unsigned(x_imm)) begin
+          execute_result = 32'b1;
+        end 
+        else begin
+          execute_result = 32'b0;
+        end 
       end
       else if(x_insn[14:12] == 3'b100) begin // xori
-        execute_result = ($signed(x_operand1) ^ x_imm);
+        execute_result = $signed(x_operand1) ^ x_imm;
       end  
       else if(x_insn[14:12] == 3'b110) begin // ori
-        execute_result = ($signed(x_operand1) | x_imm);
+        execute_result = $signed(x_operand1) | x_imm;
       end 
       else if(x_insn[14:12] == 3'b111) begin // andi
         execute_result = ($signed(x_operand1) & x_imm);
       end       
       else if((x_insn[14:12] == 3'b001) && (x_insn[31:25] == 7'd0)) begin // slli
-        execute_result = (x_operand1 << x_imm[4:0]);
+        execute_result = (x_operand1 << (x_imm[4:0]));
       end  
       else if((x_insn[14:12] == 3'b101) && (x_insn[31:25] == 7'd0)) begin // srli
         execute_result = (x_operand1 >> x_imm[4:0]);
@@ -721,10 +728,13 @@ module DatapathPipelined (
       else if((x_insn[14:12] == 3'b001) && (x_insn[31:25] == 7'd0))begin // sll
         execute_result = (x_operand1 << x_operand2[4:0]);
       end 
-      else if((x_insn[14:12] == 3'b001) && (x_insn[31:25] == 7'd0))begin // slt
-        execute_result = ($signed(x_operand1) < $signed(x_operand2))? 32'b1 : 32'b0;
+      else if((x_insn[14:12] == 3'b010) && (x_insn[31:25] == 7'd0))begin // slt
+        if($signed(x_operand1) < $signed(x_operand2))
+          execute_result = 32'b1;
+        else 
+          execute_result = 32'b0;
       end
-      else if((x_insn[14:12] == 3'b010) && (x_insn[31:25] == 7'd0))begin // sltu
+      else if((x_insn[14:12] == 3'b011) && (x_insn[31:25] == 7'd0))begin // sltu
         execute_result = (x_operand1 < $unsigned(x_operand2))? 32'b1 : 32'b0;
       end
       else if((x_insn[14:12] == 3'b100) && (x_insn[31:25] == 7'd0))begin // xor
@@ -799,11 +809,12 @@ module DatapathPipelined (
           .sum(adder_result));
 
   // for simulation 
+  wire [255:0] e_disasm;
   Disasm #(
       .PREFIX("X")
   ) disasm_1execute (
       .insn  (execute_state.insn),
-      .disasm()
+      .disasm(e_disasm)
   );
   /*****************/
   /* MEMORY STAGE */
@@ -886,11 +897,12 @@ module DatapathPipelined (
   end 
 
   // for simulation 
+  wire [255:0] m_disasm;
   Disasm #(
       .PREFIX("M")
   ) disasm_1memory (
       .insn  (memory_state.insn),
-      .disasm()
+      .disasm(m_disasm)
   );
   /*****************/
   /* WRITEBACK STAGE */
@@ -964,7 +976,7 @@ module DatapathPipelined (
       ecall_halt = 1'b1;
     end 
     else begin
-      if((w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (w_insn != 32'b0)) begin
+      if((w_opcode != OpcodeBranch) && (w_insn != 32'b0)) begin
         we = 1'b1;
         rd_data = w_in;
       end 
@@ -976,11 +988,12 @@ module DatapathPipelined (
 
   assign halt = ecall_halt;
   // for simulation 
+  wire [255:0] w_disasm;
   Disasm #(
       .PREFIX("W")
   ) disasm_1writeback (
       .insn  (writeback_state.insn),
-      .disasm()
+      .disasm(w_disasm)
   );
 endmodule
 
@@ -1073,7 +1086,7 @@ module RiscvProcessor (
 
   MemorySingleCycle #(
       .NUM_WORDS(8192)
-  ) mem (
+  ) the_mem  (
       .rst                (rst),
       .clk                (clk),
       // imem is read-only
