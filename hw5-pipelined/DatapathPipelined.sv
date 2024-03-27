@@ -274,11 +274,12 @@ module DatapathPipelined (
 
   // Here's how to disassemble an insn into a string you can view in GtkWave.
   // Use PREFIX to provide a 1-character tag to identify which stage the insn comes from.
+  wire [255:0] f_disasm;
   Disasm #(
       .PREFIX("F")
   ) disasm_0fetch (
       .insn  (f_insn),
-      .disasm()
+      .disasm(f_disasm)
   );
 
   /****************/
@@ -316,242 +317,11 @@ module DatapathPipelined (
       end
     end
   end
-  assign d_insn = decode_state.insn; // assign  NOP if branch is taken 
-  assign d_pc_current = decode_state.pc;
-  assign d_wd1_bypass = decode_state.wd_1;
-  assign d_wd2_bypass = decode_state.wd_2;
-
-  //combinational logic between pc and decode stage 
-  logic [`REG_SIZE] operand1;   // this value will store rs1_data 
-  logic [`REG_SIZE] operand2;   // this value will store rs2_data 
-  logic [`REG_SIZE] final_operand1;
-  logic [`REG_SIZE] final_operand2;
-  logic [`REG_SIZE] imm_val;    // this will store the immmidiate vlue nedded 
-  logic [`REG_SIZE] rd_data;    // this will store the value to be written into the reg file
-  // necessary signals for the reg file module
-  logic we;
-  // signal to decode the instruction 
-  logic [6:0] insn_funct7;
-  logic [4:0] insn_rs2;
-  logic [4:0] insn_rs1;
-  logic [2:0] insn_funct3;
-  logic [4:0] insn_rd;
-  logic [`OPCODE_SIZE] insn_opcode;
-  logic [`REG_SIZE] rs1_data;
-  logic [`REG_SIZE] rs2_data;
-  logic [4:0] rd;
-  logic [4:0] rs1;
-  logic [4:0] rs2;
-  // imm signals
-  logic [11:0] imm_i;
-  logic [ 4:0] imm_shamt;
-  // S - stores
-  logic [11:0] imm_s;
-  // B - conditionals
-  logic [12:0] imm_b;
-  // J - unconditional jumps
-  logic [20:0] imm_j;
-  // U - Immidiates 
-  logic [19:0] imm_u; 
-  logic [`REG_SIZE] imm_i_sext;
-  logic [`REG_SIZE] imm_i_ext;
-  logic [`REG_SIZE] imm_s_sext;
-  logic [`REG_SIZE] imm_b_sext;
-  logic [`REG_SIZE] imm_j_sext;
-  logic [`REG_SIZE] imm_u_ext;
-  logic d_illegal_insn;
-  logic wx_rs1_bypass;
-  logic wx_rs2_bypass; 
-  logic mx_rs1_bypass;
-  logic mx_rs2_bypass;
-  logic [`REG_SIZE] d_insn_branch;
-
-
-  always_comb begin
-    //assign default values 
-    operand1 = 32'b0;
-    operand2 = 32'b0;
-    imm_val = 32'b0;
-    wx_rs1_bypass = 1'b0;
-    wx_rs2_bypass = 1'b0;
-    mx_rs1_bypass = 1'b0;
-    mx_rs2_bypass = 1'b0;
-    d_illegal_insn = 1'b0;
-    // branch taken 
-    // decode the instruction 
-    {insn_funct7, insn_rs2, insn_rs1, insn_funct3, insn_rd, insn_opcode} = d_insn;
-    // setup for I, S, B & J type instructions
-    // I - short immediates and loads
-    imm_i = d_insn[31:20];
-    //imm_shamt = d_insn[24:20];
-    // S - stores
-    imm_s[11:5] = insn_funct7;
-    imm_s[4:0] = insn_rd;
-    // B - conditionals
-    {imm_b[12], imm_b[10:5]} = insn_funct7;
-    {imm_b[4:1], imm_b[11]} = insn_rd;
-    imm_b[0] = 1'b0;
-    // J - unconditional jumps
-    {imm_j[20], imm_j[10:1], imm_j[11], imm_j[19:12], imm_j[0]} = {d_insn[31:12], 1'b0};
-    // U - Immidiates 
-    imm_u = d_insn[31:12];
-    imm_i_sext = {{20{imm_i[11]}}, imm_i[11:0]};
-    imm_i_ext = {{20{1'b0}}, imm_i[11:0]};
-    imm_s_sext = {{20{imm_s[11]}}, imm_s[11:0]};
-    imm_b_sext = {{19{imm_b[12]}}, imm_b[12:0]};
-    imm_j_sext = {{11{imm_j[20]}}, imm_j[20:0]};
-    imm_u_ext = {{12{1'b0}},imm_u[19:0]};
-
-    rs1 = insn_rs1;
-    rs2 = insn_rs2;
-
-    case(insn_opcode)
-    OpcodeLui: begin
-      operand1 = rs1_data;
-      operand2 = rs2_data;
-      imm_val =imm_u_ext;
-    end 
-    OpcodeRegImm:begin
-      operand1 = rs1_data;
-      operand2 = rs2_data;
-      if(d_insn[14:12] == 3'b000) // addi 
-        imm_val = imm_i_sext;
-      else if(d_insn[14:12] == 3'b010) //slti
-        imm_val = imm_i_sext;
-      else if(d_insn[14:12] == 3'b011) //sltiu
-        imm_val = imm_i_ext;
-      else if(d_insn[14:12] == 3'b100) //xori
-        imm_val = imm_i_sext;
-      else if(d_insn[14:12] == 3'b110) //ori
-        imm_val = imm_i_sext;  
-      else if(d_insn[14:12] == 3'b111) //andi
-        imm_val = imm_i_sext;
-      else if((d_insn[14:12] == 3'b001) && (d_insn[31:25] == 7'd0)) //slli
-        imm_val = imm_i_ext;
-      else if((d_insn[14:12] == 3'b101) && (d_insn[31:25] == 7'd0)) //srli
-        imm_val = imm_i_ext;
-      else if((d_insn[14:12] == 3'b101) && (d_insn[31:25] == 7'b0100000)) //srai
-        imm_val = imm_i_ext;
-      else 
-        imm_val = imm_i_ext;
-    end 
-    OpcodeRegReg: begin 
-      operand1 = rs1_data;
-      operand2 = rs2_data;
-      // no need for an immidiate value 
-      imm_val = 32'b0;
-    end 
-    OpcodeAuipc: begin 
-      operand1 = rs1_data;
-      operand2 = rs2_data;
-      imm_val = imm_u_ext;
-    end 
-    OpcodeLoad: begin
-      operand1 = rs1_data;
-      operand2 = rs2_data;
-      imm_val = imm_i_sext;
-    end 
-    OpcodeStore: begin
-      operand1 = rs1_data;
-      operand2 = rs2_data;
-      imm_val = imm_s_sext;
-    end 
-    OpcodeBranch:begin 
-      operand1 = rs1_data;
-      operand2 = rs2_data;
-      imm_val = imm_b_sext;
-    end 
-    OpcodeJalr: begin
-      operand1 = rs1_data;
-      operand2 = rs2_data;
-      imm_val = imm_i_sext;
-    end 
-    OpcodeJal: begin 
-      operand1 = rs1_data;
-      operand2 = rs2_data;
-      imm_val = imm_j_sext;
-    end 
-    OpcodeMiscMem: begin
-      //fence instruction so it doesn't matter
-      operand1 = rs1_data;
-      operand2 = rs2_data;
-      imm_val = imm_i_sext;
-    end 
-    OpcodeEnviron: begin
-      // ecall instruction so it doesn't matter 
-      operand1 = 32'b0;
-      operand2 = 32'b0;
-      imm_val =  32'b0;
-    end 
-    default: begin
-      d_illegal_insn = 1'b1;
-    end 
-    endcase
-
-    //Hazard detection
-    if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0))begin
-      mx_rs1_bypass = 1'b1;
-      mx_rs2_bypass = 1'b1; 
-    end  
-    else if((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0))begin
-      mx_rs2_bypass = 1'b1; 
-    end 
-    else if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0))begin 
-      mx_rs1_bypass = 1'b1;
-    end
-    else begin
-      mx_rs1_bypass = 1'b0;
-      mx_rs2_bypass = 1'b0;
-    end 
-
-    if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0))begin 
-      wx_rs1_bypass = 1'b1; 
-      wx_rs2_bypass = 1'b1; 
-    end 
-    else if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0))begin
-      wx_rs1_bypass = 1'b1; 
-    end 
-    else if((insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0))begin
-      wx_rs2_bypass = 1'b1; 
-    end 
-    else begin 
-        wx_rs1_bypass = 1'b0;
-        wx_rs2_bypass = 1'b0;
-    end 
-
-    // handle wd bypassing 
-    if(d_wd1_bypass)begin 
-      operand1 = w_in;
-    end
-    if(d_wd2_bypass)begin 
-      operand2 = w_in;
-    end 
-
-    //handle branching 
-    if(branch_taken)begin 
-      d_insn_branch = 32'b0;
-    end
-    else begin 
-      d_insn_branch = d_insn;
-    end 
-  end 
-
-  RegFile rf(.rd(rd),
-             .rd_data(rd_data),
-             .rs1(rs1),
-             .rs1_data(rs1_data),
-             .rs2(rs2),
-             .rs2_data(rs2_data),
-             .clk(clk),
-             .we(we),
-             .rst(rst));
-
-  // for simulation 
   Disasm #(
       .PREFIX("D")
   ) disasm_1decode (
       .insn  (decode_state.insn),
-      .disasm()
+      .disasm(d_disasm)
   );
   /*****************/
   /* EXECUTE STAGE */
@@ -1073,7 +843,7 @@ module RiscvProcessor (
 
   MemorySingleCycle #(
       .NUM_WORDS(8192)
-  ) mem (
+  ) the_mem (
       .rst                (rst),
       .clk                (clk),
       // imem is read-only
