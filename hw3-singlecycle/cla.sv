@@ -115,7 +115,7 @@ module cla
             .pout(pout[4]),
             .cout(cout[30:28]));
  
-   always_comb begin
+   always @(a or b) begin
    integer j;
       for(j = 0; j < 32; j = j + 1) begin : calcsum32
          if(j == 0) begin : takecin
