@@ -684,11 +684,18 @@ module DatapathPipelined (
     OpcodeLui: begin
       execute_result = (x_imm << 12); 
     end
-    OpcodeJal: begin //have to add to this 
-      execute_result = (x_pc_current + 32'd4);
+    OpcodeAuipc: begin
+      execute_result = (x_pc_current + (x_imm << 12)); 
     end 
-    OpcodeJalr: begin //have to add to this 
+    OpcodeJal: begin 
       execute_result = (x_pc_current + 32'd4);
+      branch_taken = 1'b1;
+      branch_pc = x_pc_current + x_imm;
+    end 
+    OpcodeJalr: begin 
+      execute_result = (x_pc_current + 32'd4);
+      branch_taken = 1'b1;
+      branch_pc = (($signed(x_operand1) + $signed(x_imm)) & 32'hFFFFFFFE);
     end 
     OpcodeRegImm: begin
       if(x_insn[14:12] == 3'b000) begin //addi
@@ -728,15 +735,16 @@ module DatapathPipelined (
     end 
     OpcodeRegReg: begin
       if((x_insn[14:12] == 3'b000) && (x_insn[31:25] == 7'd0))begin // add
-        // cla_a = $signed(x_operand1);
-        // cla_b = $signed(x_operand2);
-        // execute_result = adder_result;
-        execute_result = $signed(x_operand1) + $signed(x_operand2);
+        cla_a = $signed(x_operand1);
+        cla_b = $signed(x_operand2);
+        execute_result = adder_result;
+        //execute_result = $signed(x_operand1) + $signed(x_operand2);
       end 
       else if((x_insn[14:12] == 3'b000) && (x_insn[31:25] == 7'b0100000))begin // sub
         // cla_a = x_operand1;
         // cla_b = ~x_operand2;
         // cin = 1'b1;
+        // execute_result = adder_result;
         execute_result = x_operand1 + ~x_operand2 + 32'b1;
        end 
       else if((x_insn[14:12] == 3'b001) && (x_insn[31:25] == 7'd0))begin // sll
@@ -766,6 +774,8 @@ module DatapathPipelined (
       else if((x_insn[14:12] == 3'b111) && (x_insn[31:25] == 7'd0))begin // and
         execute_result = (x_operand1 & x_operand2);
       end
+      //************add multiply instructions here********
+
       else begin 
       end 
     end    

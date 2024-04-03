@@ -68,7 +68,7 @@ module cla
    wire [30:0] cout;
    wire [4:0] gout;
    wire [4:0] pout;
-   reg [31:0] sum_temp;
+   logic [31:0] sum_temp;
    genvar i; 
 
    generate
@@ -115,14 +115,14 @@ module cla
             .pout(pout[4]),
             .cout(cout[30:28]));
  
-   always_comb begin
+   always @(a or b) begin
    integer j;
       for(j = 0; j < 32; j = j + 1) begin : calcsum32
          if(j == 0) begin : takecin
-            sum_temp[j] = a[j] ^ b[j] ^ cin;
+            sum_temp[j] <= a[j] ^ b[j] ^ cin;
          end : takecin
          else begin : takecout
-            sum_temp[j] = a[j] ^ b[j] ^ cout[j-1];
+            sum_temp[j] <= a[j] ^ b[j] ^ cout[j-1];
          end : takecout
       end : calcsum32  
    end   
