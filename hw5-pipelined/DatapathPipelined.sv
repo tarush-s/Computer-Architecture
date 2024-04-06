@@ -524,15 +524,15 @@ module DatapathPipelined (
     else begin
       load_use_stall = 1'b0;
     end 
-    // dont trigger branch when the instruction in the x stage is a branch instruction or a load instruction
-    if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad))begin
+    // dont trigger branch when the instruction in the x stage is a branch instruction or a load instruction or a store instruction
+    if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore))begin
       mx_rs1_bypass = 1'b1;
       mx_rs2_bypass = 1'b1; 
     end  
-    else if((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad))begin
+    else if((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore))begin
       mx_rs2_bypass = 1'b1; 
     end 
-    else if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad))begin 
+    else if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore))begin 
       mx_rs1_bypass = 1'b1;
     end
     else begin
