@@ -227,7 +227,6 @@ module DatapathPipelined (
         // adjust the pc to go back 3 clock cycles or 12 in decimal value 
         f_pc_current <= branch_pc;
         div_counter <= 1'b0;
-        
       end 
       else if(load_use_stall)begin 
         // stall for a cycle as load use in pipeline
@@ -273,18 +272,21 @@ module DatapathPipelined (
     {f_insn_funct7, f_insn_rs2, f_insn_rs1, f_insn_funct3, f_insn_rd, f_insn_opcode} = f_insn;
 
     // handle wd bypassing 
-    if((f_insn_rs1 == m_insn_rd) && (f_insn_rs1 != 5'b0))begin
+    if((f_insn_rs1 == m_insn_rd) && (f_insn_rs1 != 5'b0) && (f_insn_rs2 == m_insn_rd) && (f_insn_rs2 != 5'b0) && (m_opcode != OpcodeBranch) && (m_opcode != OpcodeStore) && (f_insn_opcode != OpcodeAuipc) && (f_insn_opcode != OpcodeLui) && (f_insn_opcode != OpcodeJal) && (f_insn_opcode != OpcodeJalr))begin 
+      wd_rs1_bypass = 1'b1; 
+      wd_rs2_bypass = 1'b1; 
+    end 
+    if((f_insn_rs1 == m_insn_rd) && (f_insn_rs1 != 5'b0) && (m_opcode != OpcodeBranch) && (m_opcode != OpcodeStore) && (f_insn_opcode != OpcodeAuipc) && (f_insn_opcode != OpcodeLui) && (f_insn_opcode != OpcodeJal))begin
       wd_rs1_bypass = 1'b1; 
     end 
-    else if((f_insn_rs2 == m_insn_rd) && (f_insn_rs2 != 5'b0))begin
+    else if((f_insn_rs2 == m_insn_rd) && (f_insn_rs2 != 5'b0) && (m_opcode != OpcodeBranch) && (m_opcode != OpcodeStore) && (f_insn_opcode != OpcodeRegImm) && (f_insn_opcode != OpcodeAuipc) && (f_insn_opcode != OpcodeLui) && (f_insn_opcode != OpcodeJal) && (f_insn_opcode != OpcodeJalr))begin
       wd_rs2_bypass = 1'b1; 
     end 
     else begin
        wd_rs1_bypass = 1'b0;
        wd_rs2_bypass = 1'b0;
     end
-
-    //handle branching 
+    //handle branching and stalls
     if(branch_taken)begin
       f_insn_branch = 32'b0;
       f_pc = 32'b0; 
@@ -347,15 +349,12 @@ module DatapathPipelined (
     end 
     else if(load_use_stall)begin 
       // stall for a cycle as load use in pipeline
-      //decode_state.cycle_status <= CYCLE_LOAD2USE;
     end 
     else if(div_stall)begin
       // stall for div use 
-      //decode_state.cycle_status <= CYCLE_DIV2USE;
     end 
     else if(fence_stall)begin 
       // stall for fence 
-     // decode_state.cycle_status <= CYCLE_FENCEI;
     end 
     else begin
       begin
@@ -574,14 +573,14 @@ module DatapathPipelined (
       load_use_stall = 1'b0;
     end 
     // dont trigger branch when the instruction in the x stage is a branch instruction or a load instruction or a store instruction
-    if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore))begin
+    if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin
       mx_rs1_bypass = 1'b1;
       mx_rs2_bypass = 1'b1; 
     end  
-    else if((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore))begin
+    else if((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin
       mx_rs2_bypass = 1'b1; 
     end 
-    else if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore))begin 
+    else if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))begin 
       mx_rs1_bypass = 1'b1;
     end
     else begin
@@ -589,14 +588,14 @@ module DatapathPipelined (
       mx_rs2_bypass = 1'b0;
     end 
     // dont trigger branch when the instruction in the m stage is a branch instruction
-    if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0) && (m_opcode != OpcodeBranch))begin 
+    if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0) && (m_opcode != OpcodeBranch) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin 
       wx_rs1_bypass = 1'b1; 
       wx_rs2_bypass = 1'b1; 
     end 
-    else if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0) && (m_opcode != OpcodeBranch))begin
+    else if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0) && (m_opcode != OpcodeBranch) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))begin
       wx_rs1_bypass = 1'b1; 
     end 
-    else if((insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0) && (m_opcode != OpcodeBranch))begin
+    else if((insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0) && (m_opcode != OpcodeBranch) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin
       wx_rs2_bypass = 1'b1; 
     end 
     else begin 
@@ -1075,7 +1074,6 @@ module DatapathPipelined (
     end 
     else if(div_stall)begin
       // stall for div use 
-      //memory_state.cycle_status <= CYCLE_DIV2USE;
     end 
     else begin 
       memory_state <= '{
@@ -1352,14 +1350,12 @@ module DatapathPipelined (
     if((w_opcode == OpcodeEnviron) && (w_insn[31:7] == 25'd0))begin
       ecall_halt = 1'b1;
     end 
-    else begin
-      if((w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (w_insn != 32'b0) && (w_insn_rd != 5'b0)) begin
-        we = 1'b1;
-        rd_data = w_in;
-      end 
-      else begin 
-        we = 1'b0;
-      end 
+    else if((w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (w_insn != 32'b0) && (w_insn_rd != 5'b0)) begin
+      we = 1'b1;
+      rd_data = w_in;
+    end 
+    else begin 
+      we = 1'b0;
     end 
   end 
 
