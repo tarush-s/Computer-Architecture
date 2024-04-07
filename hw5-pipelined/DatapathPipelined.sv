@@ -223,10 +223,11 @@ module DatapathPipelined (
       // NB: use CYCLE_NO_STALL since this is the value that will persist after the last reset cycle
     //  f_cycle_status <= CYCLE_NO_STALL;
     end else begin
-      if(branch_taken == 1'b1)begin // branch is not taken
+      if(branch_taken)begin // branch is not taken
         // adjust the pc to go back 3 clock cycles or 12 in decimal value 
         f_pc_current <= branch_pc;
         div_counter <= 1'b0;
+        
       end 
       else if(load_use_stall)begin 
         // stall for a cycle as load use in pipeline
@@ -234,7 +235,7 @@ module DatapathPipelined (
       end
       else if(fence_stall)begin 
         // stall for fence preceded by store
-        div_counter <= 1'b0; 
+        div_counter <= 1'b0;
       end 
       else if(div_stall)begin 
         div_counter <= 1'b1;
@@ -243,6 +244,7 @@ module DatapathPipelined (
         // assume normal operation 
         div_counter <= 1'b0;
         f_pc_current <= f_pc_current + 32'd4;
+        
       end 
     end
   end
@@ -288,6 +290,21 @@ module DatapathPipelined (
       f_pc = 32'b0; 
       f_cycle_status = CYCLE_TAKEN_BRANCH;
     end  
+    else if(fence_stall)begin
+      f_pc = f_pc_current;
+      f_insn_branch = f_insn;
+      f_cycle_status = CYCLE_FENCEI; 
+    end 
+    else if(load_use_stall)begin
+      f_pc = f_pc_current;
+      f_insn_branch = f_insn;
+      f_cycle_status = CYCLE_LOAD2USE;
+    end 
+    else if(div_stall)begin 
+      f_pc = f_pc_current;
+      f_insn_branch = f_insn;
+      f_cycle_status = CYCLE_DIV2USE;
+    end 
     else begin
       f_pc = f_pc_current;
       f_insn_branch = f_insn; 
@@ -330,11 +347,15 @@ module DatapathPipelined (
     end 
     else if(load_use_stall)begin 
       // stall for a cycle as load use in pipeline
+      //decode_state.cycle_status <= CYCLE_LOAD2USE;
     end 
     else if(div_stall)begin
       // stall for div use 
+      //decode_state.cycle_status <= CYCLE_DIV2USE;
     end 
     else if(fence_stall)begin 
+      // stall for fence 
+     // decode_state.cycle_status <= CYCLE_FENCEI;
     end 
     else begin
       begin
@@ -530,7 +551,7 @@ module DatapathPipelined (
     endcase
 
     // handle div stall 
-    if((div) && (div_counter == 1'b0) &&((insn_rs1 == x_insn_rd) || (insn_rs2 == x_insn_rd)) && (d_opcode != OpcodeStore))begin 
+    if((div) && (div_counter == 1'b0) &&(((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0)) || ((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0))) && (d_opcode != OpcodeStore))begin 
       div_stall = 1'b1;
       div_prop = 1'b0;
     end 
@@ -546,7 +567,7 @@ module DatapathPipelined (
 
     //Hazard detection
     // load use bypass and stall 
-    if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0)) || ((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0))) && (x_opcode_comb == OpcodeLoad))begin
+    if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0)) || ((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (d_opcode != OpcodeRegImm))) && (x_opcode_comb == OpcodeLoad))begin
       load_use_stall = 1'b1;
     end
     else begin
@@ -1054,6 +1075,7 @@ module DatapathPipelined (
     end 
     else if(div_stall)begin
       // stall for div use 
+      //memory_state.cycle_status <= CYCLE_DIV2USE;
     end 
     else begin 
       memory_state <= '{
