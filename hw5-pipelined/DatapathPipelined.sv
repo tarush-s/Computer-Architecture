@@ -1197,7 +1197,7 @@ module DatapathPipelined (
     end
     OpcodeStore: begin
       // implemented store here 
-       if(m_insn[14:12] == 3'b000)begin //sb
+      if(m_insn[14:12] == 3'b000)begin //sb
         store_data = {{4{m_operand2[7:0]}}};
         if(m_address_intermediate[1:0] == 2'b00) begin
           datamem_we = 4'b0001;
