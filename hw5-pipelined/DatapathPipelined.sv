@@ -1349,8 +1349,9 @@ module DatapathPipelined (
     
     if((w_opcode == OpcodeEnviron) && (w_insn[31:7] == 25'd0))begin
       ecall_halt = 1'b1;
+      we = 1'b0;
     end 
-    else if((w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (w_insn != 32'b0) && (w_insn_rd != 5'b0)) begin
+    else if((w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (w_opcode != OpcodeMiscMem)&& (w_insn != 32'b0) && (w_insn_rd != 5'b0)) begin
       we = 1'b1;
       rd_data = w_in;
     end 
