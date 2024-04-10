@@ -369,7 +369,6 @@ module DatapathPipelined (
       end
     end
   end
-<<<<<<< HEAD
   assign d_insn = decode_state.insn;
   assign d_pc_current = decode_state.pc;
   assign d_wd1_bypass = decode_state.wd_1;
@@ -625,8 +624,6 @@ module DatapathPipelined (
              .rst(rst));
 
   // for simulation 
-=======
->>>>>>> upstream/main
   wire [255:0] d_disasm;
   Disasm #(
       .PREFIX("D")
@@ -1467,11 +1464,7 @@ module RiscvProcessor (
 
   MemorySingleCycle #(
       .NUM_WORDS(8192)
-<<<<<<< HEAD
   ) the_mem  (
-=======
-  ) the_mem (
->>>>>>> upstream/main
       .rst                (rst),
       .clk                (clk),
       // imem is read-only
