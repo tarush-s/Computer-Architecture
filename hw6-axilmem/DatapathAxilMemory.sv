@@ -52,6 +52,27 @@ module RegFile (
     input logic rst
 );
   // TODO: copy your RegFile code here
+  localparam int NumRegs = 32;
+  //genvar i;
+  logic [`REG_SIZE] regs[NumRegs];
+
+  assign rs1_data = regs[rs1];
+  assign rs2_data = regs[rs2];
+
+  integer i; 
+  always@(posedge clk) begin 
+    if(rst == 1'b1) begin 
+      for(i = 0; i < NumRegs; i++)
+        regs[i] <=0;
+    end
+    else begin 
+      if((rd!= 5'd0) && (we == 1'b1)) begin
+        regs[rd] <= rd_data;  
+      end 
+      else begin
+      end 
+      end  
+  end
 
 endmodule
 
@@ -144,7 +165,7 @@ module MemoryAxiLite #(
       data.AWREADY <= 1;
       data.WREADY <= 1;
     end else begin
-
+      
     end
   end
 
@@ -308,6 +329,7 @@ module DatapathAxilMemory (
 );
 
   // TODO: your code here
+
 
 endmodule
 
