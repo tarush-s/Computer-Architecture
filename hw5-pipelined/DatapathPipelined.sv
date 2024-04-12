@@ -474,7 +474,7 @@ module DatapathPipelined (
     end 
     OpcodeRegImm:begin
       operand1 = rs1_data;
-      operand2 = rs2_data;
+      operand2 = 32'b0;
       if(d_insn[14:12] == 3'b000) // addi 
         imm_val = imm_i_sext;
       else if(d_insn[14:12] == 3'b010) //slti
@@ -509,7 +509,7 @@ module DatapathPipelined (
     end 
     OpcodeLoad: begin
       operand1 = rs1_data;
-      operand2 = rs2_data;
+      operand2 = 32'b0;
       imm_val = imm_i_sext;
     end 
     OpcodeStore: begin
@@ -524,12 +524,12 @@ module DatapathPipelined (
     end 
     OpcodeJalr: begin
       operand1 = rs1_data;
-      operand2 = rs2_data;
+      operand2 = 32'b0;
       imm_val = imm_i_sext;
     end 
     OpcodeJal: begin 
-      operand1 = rs1_data;
-      operand2 = rs2_data;
+      operand1 = 32'b0;
+      operand2 = 32'b0;
       imm_val = imm_j_sext;
     end 
     OpcodeMiscMem: begin
@@ -539,6 +539,9 @@ module DatapathPipelined (
       end 
       else begin 
         fence_stall = 1'b0;
+        operand1 = 32'b0;
+        operand2 = 32'b0;
+        imm_val = 32'b0;
       end 
     end 
     OpcodeEnviron: begin
@@ -637,8 +640,6 @@ module DatapathPipelined (
   logic [`REG_SIZE] x_pc_current;
   logic [`REG_SIZE] x_insn;
   cycle_status_e x_cycle_status;
-  logic [`REG_SIZE] x_operand1;
-  logic [`REG_SIZE] x_operand2;
   logic [`REG_SIZE] x_operand1_temp;
   logic [`REG_SIZE] x_operand2_temp;
   logic [`REG_SIZE] x_imm;
@@ -717,6 +718,8 @@ module DatapathPipelined (
   logic [2:0] x_insn_funct3;
   logic [4:0] x_insn_rd;
   logic [`OPCODE_SIZE] x_opcode_comb;
+  logic [`REG_SIZE] x_operand1;
+  logic [`REG_SIZE] x_operand2;
   // control signal for the ALU 
   logic [`REG_SIZE] cla_a;
   logic [`REG_SIZE] cla_b;
@@ -746,8 +749,8 @@ module DatapathPipelined (
     //x_pc = 32'b0;
     x_insn_rs2 = 0;
     {x_insn_funct7, x_insn_rs2, x_insn_rs1, x_insn_funct3, x_insn_rd, x_opcode_comb} = x_insn;
-    x_operand1 = x_operand1_temp;
-    x_operand2 = x_operand2_temp;
+    x_operand1 = 32'b0;
+    x_operand2 = 32'b0;
     //handle branching 
     branch_taken = 1'b0;
     branch_pc = 32'b0;
@@ -770,12 +773,18 @@ module DatapathPipelined (
     else if(d_wx_rs2_bypass)begin 
       x_operand2 = w_in;
     end 
+    else begin
+      x_operand2 = x_operand2_temp; 
+    end 
 
     if(d_mx_rs1_bypass)begin
       x_operand1 =  m_in;
     end 
     else if(d_wx_rs1_bypass)begin
-       x_operand1 = w_in; 
+      x_operand1 = w_in; 
+    end 
+    else begin 
+      x_operand1 = x_operand1_temp;
     end 
     
     x_illegal_insn = 1'b0;
@@ -801,8 +810,8 @@ module DatapathPipelined (
     end 
     OpcodeJalr: begin 
       execute_result = (x_pc_current + 32'd4);
-      branch_taken = 1'b1;
       branch_pc = (($signed(x_operand1) + $signed(x_imm)) & 32'hFFFFFFFE);
+      branch_taken = 1'b1;
     end 
     OpcodeRegImm: begin
       if(x_insn[14:12] == 3'b000) begin //addi
@@ -1000,6 +1009,9 @@ module DatapathPipelined (
       else begin
         branch_taken = 1'b0; 
       end     
+    end 
+    OpcodeEnviron: begin
+      // ecall instruction so it doesn't matter 
     end 
     default: begin 
       x_illegal_insn = 1'b1;
@@ -1344,7 +1356,7 @@ module DatapathPipelined (
 
     we = 1'b0;
     rd_data = 32'b0;
-    rd = w_insn[11:7];
+    rd = 5'b0;
     ecall_halt = 1'b0;
     
     if((w_opcode == OpcodeEnviron) && (w_insn[31:7] == 25'd0))begin
@@ -1354,6 +1366,7 @@ module DatapathPipelined (
     else if((w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (w_opcode != OpcodeMiscMem)&& (w_insn != 32'b0) && (w_insn_rd != 5'b0)) begin
       we = 1'b1;
       rd_data = w_in;
+      rd = w_insn[11:7];
     end 
     else begin 
       we = 1'b0;
