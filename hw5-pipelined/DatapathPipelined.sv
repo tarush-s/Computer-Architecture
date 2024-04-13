@@ -56,6 +56,7 @@ module RegFile (
   logic [`REG_SIZE] regs[NumRegs];
 
   // TODO: your code here
+  assign regs[0] = 32'b0;
   assign rs1_data = regs[rs1];
   assign rs2_data = regs[rs2];
 
@@ -71,7 +72,7 @@ module RegFile (
       end 
       else begin
       end 
-      end  
+    end  
   end
 endmodule
 
@@ -144,7 +145,6 @@ typedef struct packed {
   logic [`REG_SIZE] load_store_address;
   logic wm_rd;
   logic [3:0] div_instruction;
-  logic div_propogate;
 } stage_memory_t;
 
 //** state at the start of the writeback stage */
@@ -214,7 +214,6 @@ module DatapathPipelined (
   wire [`REG_SIZE] f_insn;
   cycle_status_e f_cycle_status;
   logic [`REG_SIZE] branch_pc;
-  logic div_counter;
 
   // program counter
   always_ff @(posedge clk) begin
@@ -226,24 +225,18 @@ module DatapathPipelined (
       if(branch_taken)begin // branch is not taken
         // adjust the pc to go back 3 clock cycles or 12 in decimal value 
         f_pc_current <= branch_pc;
-        div_counter <= 1'b0;
       end 
       else if(load_use_stall)begin 
         // stall for a cycle as load use in pipeline
-        div_counter <= 1'b0;
       end
       else if(fence_stall)begin 
         // stall for fence preceded by store
-        div_counter <= 1'b0;
       end 
       else if(div_stall)begin 
-        div_counter <= 1'b1;
       end  
       else begin // branch is takken 
         // assume normal operation 
-        div_counter <= 1'b0;
         f_pc_current <= f_pc_current + 32'd4;
-        
       end 
     end
   end
@@ -290,6 +283,8 @@ module DatapathPipelined (
     if(branch_taken)begin
       f_insn_branch = 32'b0;
       f_pc = 32'b0; 
+      wd_rs1_bypass = 1'b0;
+      wd_rs2_bypass = 1'b0;
       f_cycle_status = CYCLE_TAKEN_BRANCH;
     end  
     else if(fence_stall)begin
@@ -347,15 +342,15 @@ module DatapathPipelined (
         cycle_status: CYCLE_RESET
       };
     end 
-    else if(load_use_stall)begin 
+    else if(load_use_stall || div_stall || fence_stall)begin 
       // stall for a cycle as load use in pipeline
     end 
-    else if(div_stall)begin
-      // stall for div use 
-    end 
-    else if(fence_stall)begin 
-      // stall for fence 
-    end 
+    // else if(div_stall)begin
+    //   // stall for div use 
+    // end 
+    // else if(fence_stall)begin 
+    //   // stall for fence 
+    // end 
     else begin
       begin
         decode_state <= '{
@@ -424,7 +419,6 @@ module DatapathPipelined (
   logic [`REG_SIZE] d_pc;
   logic fence_stall;
   logic div_stall;
-  logic div_prop;
 
   always_comb begin
     //assign default values 
@@ -439,7 +433,6 @@ module DatapathPipelined (
     mx_rs2_bypass = 1'b0;
     load_use_stall = 1'b0;
     div_stall = 1'b0;
-    div_prop = 1'b0;
     d_illegal_insn = 1'b0;
     // branch taken 
     // decode the instruction 
@@ -468,8 +461,8 @@ module DatapathPipelined (
 
     case(insn_opcode)
     OpcodeLui: begin
-      operand1 = rs1_data;
-      operand2 = rs2_data;
+      operand1 = 32'b0;
+      operand2 = 32'b0;
       imm_val =imm_u_ext;
     end 
     OpcodeRegImm:begin
@@ -503,8 +496,8 @@ module DatapathPipelined (
       imm_val = 32'b0;
     end 
     OpcodeAuipc: begin 
-      operand1 = rs1_data;
-      operand2 = rs2_data;
+      operand1 = 32'b0;
+      operand2 = 32'b0;
       imm_val = imm_u_ext;
     end 
     OpcodeLoad: begin
@@ -551,25 +544,18 @@ module DatapathPipelined (
       d_illegal_insn = 1'b1;
     end 
     endcase
-
-    // handle div stall 
-    if((div) && (div_counter == 1'b0) &&(((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0)) || ((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0))) && (d_opcode != OpcodeStore))begin 
-      div_stall = 1'b1;
-      div_prop = 1'b0;
-    end 
-    else if((div) && (div_counter) &&((insn_rs1 == x_insn_rd) || (insn_rs2 == x_insn_rd)))begin 
+ 
+    if((div) && ((insn_rs1 == x_insn_rd) || (insn_rs2 == x_insn_rd)))begin 
       // the cycle after the system stall, div has got cirrect result in the execute stage 
-      div_stall = 1'b0;
-      div_prop = 1'b1;
+      div_stall = 1'b1;
     end 
     else begin 
-      div_prop = 1'b0;
       div_stall = 1'b0;
     end 
 
     //Hazard detection
     // load use bypass and stall 
-    if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0)) || ((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (d_opcode != OpcodeRegImm))) && (x_opcode_comb == OpcodeLoad))begin
+    if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui)) || ((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (d_opcode != OpcodeRegImm) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))) && (x_opcode_comb == OpcodeLoad))begin
       load_use_stall = 1'b1;
     end
     else begin
@@ -668,6 +654,8 @@ module DatapathPipelined (
     end 
     else if(div_stall)begin
       // stall for div use 
+      execute_state <= 0;
+      execute_state.cycle_status <= CYCLE_DIV2USE;
     end 
     else if(branch_taken)begin 
       execute_state <= 0;
@@ -918,55 +906,55 @@ module DatapathPipelined (
         div_insn = 4'b0001;
         dividend = (x_operand1[31]) ? (~x_operand1 + 32'b1) : x_operand1; 
         divisor = (x_operand2[31]) ? (~x_operand2 + 32'b1) : x_operand2;
-        if(( x_operand1 == 0 | x_operand2 == 0)) begin  
-            execute_result = $signed(32'hFFFF_FFFF);             
-        end 
-        else if(x_operand1[31] != x_operand2[31]) begin
-          execute_result = (~quotient + 32'b1);
-        end 
-        else begin 
-          execute_result = quotient;
-        end 
+        // if(( x_operand1 == 0 | x_operand2 == 0)) begin  
+        //     execute_result = $signed(32'hFFFF_FFFF);             
+        // end 
+        // else if(x_operand1[31] != x_operand2[31]) begin
+        //   execute_result = (~quotient + 32'b1);
+        // end 
+        // else begin 
+        //   execute_result = quotient;
+        // end 
       end 
       else if((x_insn[14:12] == 3'b101) && (x_insn[31:25] == 7'd1))begin // divu
         div = 1'b1;
         div_insn = 4'b0010;
         dividend = $signed(x_operand1); 
         divisor =  $unsigned(x_operand2);
-        execute_result = quotient;
+        // execute_result = quotient;
       end 
       else if((x_insn[14:12] == 3'b110) && (x_insn[31:25] == 7'd1))begin // rem
         div = 1'b1;
         div_insn = 4'b0100;
         dividend = (x_operand1[31]) ? (~x_operand1 + 32'b1) : x_operand1; 
         divisor = (x_operand2[31]) ? (~x_operand2 + 32'b1) : x_operand2;
-        if(x_operand1 == 32'b0) begin  
-          execute_result = (m_operand2[31]) ? (~x_operand2 + 32'b1) : x_operand2;             
-        end 
-        else if((x_operand1[31])) begin
-          execute_result = (~remainder + 32'b1);
-        end 
-        else begin 
-          execute_result = remainder;
-        end
+        // if(x_operand1 == 32'b0) begin  
+        //   execute_result = (m_operand2[31]) ? (~x_operand2 + 32'b1) : x_operand2;             
+        // end 
+        // else if((x_operand1[31])) begin
+        //   execute_result = (~remainder + 32'b1);
+        // end 
+        // else begin 
+        //   execute_result = remainder;
+        // end
       end 
       else if((x_insn[14:12] == 3'b111) && (x_insn[31:25] == 7'd1))begin // remu
         div = 1'b1;
         div_insn = 4'b1000;
         dividend = $signed(x_operand1); 
         divisor =  $unsigned(x_operand2);
-        execute_result = remainder;
+       // execute_result = remainder;
       end 
       else begin 
         execute_result = 32'b0;
       end 
     end    
     OpcodeLoad: begin
-      address_intermediate = x_operand1 + x_imm;
+      address_intermediate = $signed(x_operand1) + $signed(x_imm);
       address_datamemory = (address_intermediate & 32'hFFFF_FFFC); 
     end 
     OpcodeStore: begin 
-      address_intermediate = x_operand1 + x_imm;
+      address_intermediate = $signed(x_operand1)  + $signed(x_imm);
       address_datamemory = (address_intermediate & 32'hFFFF_FFFC);   
     end 
     OpcodeBranch: begin
@@ -974,37 +962,55 @@ module DatapathPipelined (
         if($signed(x_operand1) == $signed(x_operand2))begin
           branch_taken = 1'b1;
           branch_pc = x_pc_current + x_imm;
-        end 
+        end
+        else begin
+          branch_taken = 1'b0; 
+        end  
       end
       else if(x_insn[14:12] == 3'b001)begin //bne
         if(x_operand1 != x_operand2)begin
           branch_taken = 1'b1;
           branch_pc = x_pc_current + x_imm;
         end 
+        else begin
+          branch_taken = 1'b0; 
+        end  
       end  
       else if(x_insn[14:12] == 3'b100)begin //blt
         if($signed(x_operand1) < $signed(x_operand2))begin
           branch_taken = 1'b1; 
           branch_pc = x_pc_current + x_imm;
         end 
+        else begin
+          branch_taken = 1'b0; 
+        end  
       end  
       else if(x_insn[14:12] == 3'b101)begin //bge
         if($signed(x_operand1) >= $signed(x_operand2))begin 
           branch_taken = 1'b1;
           branch_pc = x_pc_current + x_imm;
         end 
+        else begin
+          branch_taken = 1'b0; 
+        end  
       end  
       else if(x_insn[14:12] == 3'b110)begin //bltu
         if($signed(x_operand1) < $unsigned(x_operand2))begin
           branch_taken = 1'b1;
           branch_pc = x_pc_current + x_imm;
         end 
+        else begin
+          branch_taken = 1'b0; 
+        end  
       end
       else if(x_insn[14:12] == 3'b111)begin //bgeu
         if($signed(x_operand1) >= $unsigned(x_operand2))begin
           branch_taken = 1'b1;
           branch_pc = x_pc_current + x_imm; 
         end 
+        else begin
+          branch_taken = 1'b0; 
+        end  
       end
       else begin
         branch_taken = 1'b0; 
@@ -1063,7 +1069,6 @@ module DatapathPipelined (
   logic [`REG_SIZE] m_address_intermediate;  
   logic m_wm;
   logic [3:0] m_div_insn;
-  logic m_div_prop;
 
   stage_memory_t memory_state;
   always_ff@ (posedge clk)begin
@@ -1080,12 +1085,8 @@ module DatapathPipelined (
         load_store_adr_interm : 0,
         load_store_address : 0,
         wm_rd : 0,
-        div_instruction : 0,
-        div_propogate : 0
+        div_instruction : 0
       };
-    end 
-    else if(div_stall)begin
-      // stall for div use 
     end 
     else begin 
       memory_state <= '{
@@ -1100,8 +1101,7 @@ module DatapathPipelined (
         load_store_adr_interm : address_intermediate,
         load_store_address : address_datamemory,
         wm_rd : wm_bypass,
-        div_instruction : div_insn,
-        div_propogate : div_prop
+        div_instruction : div_insn
       };
     end 
   end 
@@ -1118,7 +1118,6 @@ module DatapathPipelined (
   assign m_address_intermediate = memory_state.load_store_adr_interm;
   assign m_wm = memory_state.wm_rd;
   assign m_div_insn = memory_state.div_instruction;
-  assign m_div_prop = memory_state.div_propogate;
 
   logic [`REG_SIZE] ms_addr_to_dmem;
   logic [`REG_SIZE] ms_load_data_from_dmem;
@@ -1135,13 +1134,14 @@ module DatapathPipelined (
   logic [3:0] datamem_we;
   logic [`REG_SIZE] m_operand2;
   logic [`REG_SIZE] m_operand1;
-  
+  logic [`REG_SIZE] data_from_mem;
   always_comb begin
     // decode the instruction 
     {m_insn_funct7, m_insn_rs2, m_insn_rs1, m_insn_funct3, m_insn_rd, m_opcode} = m_insn;
     m_result = 32'b0;
     store_data = 32'b0;
     datamem_we = 4'b0;
+    data_from_mem = 32'b0;
 
     //handle wm bypass 
     if(m_wm)begin
@@ -1154,51 +1154,52 @@ module DatapathPipelined (
     case(m_opcode)
     OpcodeLoad: begin 
       // implement load here
+      data_from_mem = load_data_from_dmem;
       if(m_insn[14:12] == 3'b000) begin //lb
         if(m_address_intermediate[1:0] == 2'b00) begin
-          m_result = {{24{load_data_from_dmem[7]}},load_data_from_dmem[7:0]}; 
+          m_result = {{24{data_from_mem[7]}},data_from_mem[7:0]}; 
         end 
         else if(m_address_intermediate[1:0] == 2'b01) begin 
-          m_result = {{24{load_data_from_dmem[15]}},load_data_from_dmem[15:8]};
+          m_result = {{24{data_from_mem[15]}},data_from_mem[15:8]};
         end 
         else if(m_address_intermediate[1:0] == 2'b10) begin 
-          m_result = {{24{load_data_from_dmem[23]}},load_data_from_dmem[23:16]};
+          m_result = {{24{data_from_mem[23]}},data_from_mem[23:16]};
         end 
         else begin
-          m_result = {{24{load_data_from_dmem[31]}},load_data_from_dmem[31:24]};  
+          m_result = {{24{data_from_mem[31]}},data_from_mem[31:24]};  
         end 
       end
       else if(m_insn[14:12] == 3'b001) begin //lh
         if(m_address_intermediate[1:0] == 2'b00) begin
-          m_result = {{16{load_data_from_dmem[15]}},load_data_from_dmem[15:0]}; 
+          m_result = {{16{data_from_mem[15]}},data_from_mem[15:0]}; 
         end 
         else begin
-          m_result = {{16{load_data_from_dmem[31]}},load_data_from_dmem[31:16]}; 
+          m_result = {{16{data_from_mem[31]}},data_from_mem[31:16]}; 
         end 
       end
       else if(m_insn[14:12] == 3'b010) begin //lw
-        m_result = load_data_from_dmem;
+        m_result = data_from_mem[31:0];
       end
       else if(m_insn[14:12] == 3'b100) begin //lbu
         if(m_address_intermediate[1:0] == 2'b00) begin
-          m_result = {{24'b0},load_data_from_dmem[7:0]}; 
+          m_result = {{24'b0},data_from_mem[7:0]}; 
         end 
         else if(m_address_intermediate[1:0] == 2'b01) begin 
-          m_result = {{24'b0},load_data_from_dmem[15:8]};
+          m_result = {{24'b0},data_from_mem[15:8]};
         end 
         else if(m_address_intermediate[1:0] == 2'b10) begin 
-          m_result = {{24'b0},load_data_from_dmem[23:16]};
+          m_result = {{24'b0},data_from_mem[23:16]};
         end 
         else begin
-          m_result = {{24'b0},load_data_from_dmem[31:24]};  
+          m_result = {{24'b0},data_from_mem[31:24]};  
         end 
       end
       else if(m_insn[14:12] == 3'b101) begin //lhu
         if(m_address_intermediate[1:0] == 2'b00) begin
-          m_result = {{16'b0},load_data_from_dmem[15:0]}; 
+          m_result = {{16'b0},data_from_mem[15:0]}; 
         end 
         else begin
-          m_result = {{16'b0},load_data_from_dmem[31:16]}; 
+          m_result = {{16'b0},data_from_mem[31:16]}; 
         end 
       end
       else begin
@@ -1232,7 +1233,7 @@ module DatapathPipelined (
         end 
       end 
       else if(m_insn[14:12] == 3'b010)begin //sw
-        store_data = m_operand2;
+        store_data = $signed(m_operand2);
         datamem_we = 4'b1111;
       end 
       else begin 
@@ -1240,7 +1241,6 @@ module DatapathPipelined (
       end 
     end  
     default: begin 
-      if(m_div_prop == 1'b0)begin
         if((m_div_insn == 4'b0001) )begin //div 
           if(( m_operand1 == 0 | m_operand2 == 0)) begin  
               m_result = $signed(32'hFFFF_FFFF);             
@@ -1273,10 +1273,6 @@ module DatapathPipelined (
           m_result = m_in; 
         end
       end 
-      else begin
-        m_result = m_in; 
-      end   
-    end 
     endcase 
   end 
 
@@ -1317,10 +1313,7 @@ module DatapathPipelined (
         execute_result : 0,
         memory_result : 0
       };
-    end 
-    else if(div_stall)begin
-      // stall for div use 
-    end 
+    end  
     else begin 
       writeback_state <= '{
         pc: m_pc_current,
@@ -1363,10 +1356,10 @@ module DatapathPipelined (
       ecall_halt = 1'b1;
       we = 1'b0;
     end 
-    else if((w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (w_opcode != OpcodeMiscMem)&& (w_insn != 32'b0) && (w_insn_rd != 5'b0)) begin
+    else if((w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (w_insn != 32'b0) && (w_insn_rd != 5'b0)) begin
       we = 1'b1;
       rd_data = w_in;
-      rd = w_insn[11:7];
+      rd = w_insn_rd;
     end 
     else begin 
       we = 1'b0;
