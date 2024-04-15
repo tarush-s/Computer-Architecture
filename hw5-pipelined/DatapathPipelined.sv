@@ -226,7 +226,7 @@ module DatapathPipelined (
         // adjust the pc to go back 3 clock cycles or 12 in decimal value 
         f_pc_current <= branch_pc;
       end 
-      else if(load_use_stall)begin 
+      else if(load_use_stall || wm_address)begin 
         // stall for a cycle as load use in pipeline
       end
       else if(fence_stall)begin 
@@ -292,7 +292,7 @@ module DatapathPipelined (
       f_insn_branch = f_insn;
       f_cycle_status = CYCLE_FENCEI; 
     end 
-    else if(load_use_stall)begin
+    else if(load_use_stall || wm_address)begin
       f_pc = f_pc_current;
       f_insn_branch = f_insn;
       f_cycle_status = CYCLE_LOAD2USE;
@@ -342,7 +342,7 @@ module DatapathPipelined (
         cycle_status: CYCLE_RESET
       };
     end 
-    else if(load_use_stall || div_stall || fence_stall)begin 
+    else if(load_use_stall || div_stall || fence_stall || wm_address)begin 
       // stall for a cycle as load use in pipeline
     end 
     // else if(div_stall)begin
@@ -419,6 +419,7 @@ module DatapathPipelined (
   logic [`REG_SIZE] d_pc;
   logic fence_stall;
   logic div_stall;
+  logic wm_address;
 
   always_comb begin
     //assign default values 
@@ -434,6 +435,7 @@ module DatapathPipelined (
     load_use_stall = 1'b0;
     div_stall = 1'b0;
     d_illegal_insn = 1'b0;
+    wm_address = 1'b0;
     // branch taken 
     // decode the instruction 
     {insn_funct7, insn_rs2, insn_rs1, insn_funct3, insn_rd, insn_opcode} = d_insn;
@@ -554,12 +556,19 @@ module DatapathPipelined (
     end 
 
     //Hazard detection
+    
     // load use bypass and stall 
     if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (d_opcode != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui)) || ((insn_rs2 == x_insn_rd) && (d_opcode != OpcodeLoad) && (d_opcode != OpcodeStore) && (insn_rs2 != 5'b0) && (d_opcode != OpcodeRegImm) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))) && (x_opcode_comb == OpcodeLoad))begin
       load_use_stall = 1'b1;
     end
     else begin
       load_use_stall = 1'b0;
+    end 
+    if((x_opcode == OpcodeLoad) && (d_opcode == OpcodeStore) && (insn_rs1 == x_insn_rd) && (x_insn_rd != 5'b0))begin
+      wm_address = 1'b1;
+    end
+    else begin
+      wm_address = 1'b0;
     end 
     // dont trigger branch when the instruction in the x stage is a branch instruction or a load instruction or a store instruction
     if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin
@@ -661,7 +670,7 @@ module DatapathPipelined (
       execute_state <= 0;
       execute_state.cycle_status <= CYCLE_TAKEN_BRANCH;
     end 
-    else if(load_use_stall)begin 
+    else if(load_use_stall || wm_address)begin 
       // send a bubble as load use in piepline
       execute_state <= 0;
       execute_state.cycle_status <= CYCLE_LOAD2USE;
