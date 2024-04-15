@@ -555,7 +555,7 @@ module DatapathPipelined (
 
     //Hazard detection
     // load use bypass and stall 
-    if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui)) || ((insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (d_opcode != OpcodeRegImm) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))) && (x_opcode_comb == OpcodeLoad))begin
+    if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (d_opcode != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui)) || ((insn_rs2 == x_insn_rd) && (d_opcode != OpcodeLoad) && (d_opcode != OpcodeStore) && (insn_rs2 != 5'b0) && (d_opcode != OpcodeRegImm) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))) && (x_opcode_comb == OpcodeLoad))begin
       load_use_stall = 1'b1;
     end
     else begin
@@ -577,14 +577,14 @@ module DatapathPipelined (
       mx_rs2_bypass = 1'b0;
     end 
     // dont trigger branch when the instruction in the m stage is a branch instruction
-    if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0) && (m_opcode != OpcodeBranch) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin 
+    if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0) && (m_opcode != OpcodeStore) && (m_opcode != OpcodeBranch) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin 
       wx_rs1_bypass = 1'b1; 
       wx_rs2_bypass = 1'b1; 
     end 
-    else if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0) && (m_opcode != OpcodeBranch) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))begin
+    else if((insn_rs1 == m_insn_rd) && (insn_rs1 != 5'b0) && (m_opcode != OpcodeStore) && (m_opcode != OpcodeBranch) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))begin
       wx_rs1_bypass = 1'b1; 
     end 
-    else if((insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0) && (m_opcode != OpcodeBranch) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin
+    else if((insn_rs2 == m_insn_rd) && (insn_rs2 != 5'b0) && (m_opcode != OpcodeStore) && (m_opcode != OpcodeBranch) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin
       wx_rs2_bypass = 1'b1; 
     end 
     else begin 
@@ -1379,6 +1379,7 @@ module DatapathPipelined (
       .insn  (writeback_state.insn),
       .disasm(w_disasm)
   );
+
 endmodule
 
 module MemorySingleCycle #(
@@ -1497,5 +1498,5 @@ module RiscvProcessor (
       .trace_writeback_insn(trace_writeback_insn),
       .trace_writeback_cycle_status(trace_writeback_cycle_status)
   );
-
 endmodule
+
