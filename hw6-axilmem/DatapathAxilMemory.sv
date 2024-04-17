@@ -123,7 +123,7 @@ endinterface
 
 module MemoryAxiLite #(
     parameter int NUM_WORDS  = 32,
-    parameter int ADDR_WIDTH = 32,
+    //parameter int ADDR_WIDTH = 32,
     parameter int DATA_WIDTH = 32
 ) (
     axi_clkrst_if axi,
@@ -137,7 +137,7 @@ module MemoryAxiLite #(
   localparam int AddrLsb = 2;
 
   // [BR]RESP codes, from Section A 3.4.4 of AXI4 spec
-  localparam bit [1:0] ResponseOkay = 2'b00;
+  //localparam bit [1:0] ResponseOkay = 2'b00;
   // localparam bit [1:0] ResponseSubordinateError = 2'b10;
   // localparam bit [1:0] ResponseDecodeError = 2'b11;
 
@@ -155,6 +155,15 @@ module MemoryAxiLite #(
 `endif
 
   // TODO: changes will be needed throughout this module
+  localparam Idle = 3'b000;
+  localparam Read_Address = 3'b001;
+  //localparam Read_Data = 3'b010;
+  // localparam Write_Address = 3'b011;
+  // localparam Write_Data = 3'b100;
+  // localparam Write_Response = 3'b101;
+
+  logic[2:0] bus_state;
+  logic[`REG_SIZE] address_buffer; 
 
   always_ff @(posedge axi.ACLK) begin
     if (!axi.ARESETn) begin
@@ -164,10 +173,63 @@ module MemoryAxiLite #(
       // start out ready to accept an incoming write
       data.AWREADY <= 1;
       data.WREADY <= 1;
+      // set the bus state to idle 
+      bus_state <= Idle;
     end else begin
-      
+      if(data.ARREADY && data.ARVALID)begin // manager has requested a read at an address  
+        //requested_data_buffer <= mem_array[{data.ARADDR[AddrMsb:AddrLsb]}];
+        address_buffer <= data.ARADDR;
+        data.RVALID <= 1'b1;
+        bus_state <= Read_Address;
+      end
+      else begin
+        // we have to preserve the revious state of the bus 
+        data.RVALID <= 1'b0;
+      end 
+      // handle the bus state depending upon the signal from the comb logic 
     end
+  end 
+
+  always_ff @(posedge axi.ACLK) begin
+    if (!axi.ARESETn) begin
+      data.RVALID <= 1'b0;
+    end 
+    else begin 
+      if(address_done)begin // found data in memory 
+        bus_state <= Idle;     
+      end 
+      else begin // we haven't found data yet 
+        bus_state <= Read_Address;
+      end 
+    end 
   end
+
+  logic[`REG_SIZE] requested_data_buffer;
+  logic address_done;
+  
+  always_comb begin
+    //requested_data_buffer = 32'b0;
+    address_done = 1'b0;
+
+    case(bus_state)
+    Idle: begin 
+      // you can do stuff here when there is not traffic on the bus 
+    end 
+    Read_Address: begin
+      requested_data_buffer = mem_array[{address_buffer[AddrMsb:AddrLsb]}];
+      if(data.RREADY)begin // manager is ready to accept data 
+        data.RDATA = requested_data_buffer;
+        address_done = 1'b1;
+      end 
+      else begin 
+        address_done = 1'b0;
+      end 
+    end 
+    default: begin 
+      address_done = 1'b0;
+    end 
+    endcase 
+  end 
 
 endmodule
 
