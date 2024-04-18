@@ -157,8 +157,8 @@ module MemoryAxiLite #(
   // TODO: changes will be needed throughout this module
   localparam Idle = 3'b000;
   localparam Read_Address = 3'b001;
-  //localparam Read_Data = 3'b010;
-  // localparam Write_Address = 3'b011;
+  localparam Read_Insn = 3'b010;
+  localparam Write_Address = 3'b011;
   // localparam Write_Data = 3'b100;
   // localparam Write_Response = 3'b101;
 
@@ -175,58 +175,107 @@ module MemoryAxiLite #(
       data.WREADY <= 1;
       // set the bus state to idle 
       bus_state <= Idle;
-    end else begin
-      if(data.ARREADY && data.ARVALID)begin // manager has requested a read at an address  
-        //requested_data_buffer <= mem_array[{data.ARADDR[AddrMsb:AddrLsb]}];
-        address_buffer <= data.ARADDR;
-        data.RVALID <= 1'b1;
-        bus_state <= Read_Address;
+    end 
+    else begin
+      if(data.ARREADY && data.ARVALID)begin // manager has requested a data read at an address 
+        address_buffer <= data.ARADDR;  // store the address while its valid
+        bus_state <= Read_Address;      // direct the bus state 
       end
-      else begin
-        // we have to preserve the revious state of the bus 
-        data.RVALID <= 1'b0;
+      else if(insn.ARREADY && insn.ARVALID)begin // manager has requested an insn read at an address 
+        address_buffer <= insn.ARADDR;  // store the address while its valid
+        bus_state <= Read_Insn;         // direct the bus state 
       end 
-      // handle the bus state depending upon the signal from the comb logic 
+      else if(data.AWREADY && data.AWVALID)begin // manager has requested a data write at an memory address 
+        address_buffer <= data.AWADDR;
+      end 
+      else if(transfer_complete)begin 
+        bus_state <= Idle;
+      end 
+      else if(write_transfer_complete)begin
+        bus_state <= Idle;
+        if(write_we[0])begin
+          mem_array[address_buffer[AddrMsb:AddrLsb]][7:0] <= write_data_buffer[7:0];
+        end
+        if(write_we[1])begin
+          mem_array[address_buffer[AddrMsb:AddrLsb]][15:8] <= write_data_buffer[15:8];
+        end
+        if(write_we[2])begin
+          mem_array[address_buffer[AddrMsb:AddrLsb]][23:16] <= write_data_buffer[23:16];
+        end
+        if(write_we[3])begin
+          mem_array[address_buffer[AddrMsb:AddrLsb]][31:24] <= write_data_buffer[31:24];
+        end
+      end 
+      else begin
+        // we have to preserve the previous state of the bus 
+      end 
     end
   end 
 
-  always_ff @(posedge axi.ACLK) begin
-    if (!axi.ARESETn) begin
-      data.RVALID <= 1'b0;
-    end 
-    else begin 
-      if(address_done)begin // found data in memory 
-        bus_state <= Idle;     
-      end 
-      else begin // we haven't found data yet 
-        bus_state <= Read_Address;
-      end 
-    end 
-  end
-
   logic[`REG_SIZE] requested_data_buffer;
-  logic address_done;
+  logic[`REG_SIZE] write_data_buffer;
+  logic[3:0] write_we;
+  logic transfer_complete;
+  logic write_transfer_complete;
   
   always_comb begin
-    //requested_data_buffer = 32'b0;
-    address_done = 1'b0;
+    requested_data_buffer = 32'b0;
+    transfer_complete = 1'b0;
+    write_transfer_complete = 1'b0;
+    data.RVALID = 1'b0;
+    insn.RDATA = 32'b0;
+    data.RDATA = 32'b0;
+    data.RVALID = 1'b0;
 
     case(bus_state)
     Idle: begin 
       // you can do stuff here when there is not traffic on the bus 
+      transfer_complete = 1'b0;
+
     end 
     Read_Address: begin
       requested_data_buffer = mem_array[{address_buffer[AddrMsb:AddrLsb]}];
+      data.RVALID = 1'b1; // the sub is ready with the response
       if(data.RREADY)begin // manager is ready to accept data 
         data.RDATA = requested_data_buffer;
-        address_done = 1'b1;
+        transfer_complete = 1'b1;
       end 
-      else begin 
-        address_done = 1'b0;
+      else begin // manager is not ready to accept data 
+        transfer_complete = 1'b0;
       end 
     end 
+    Read_Insn: begin
+      requested_data_buffer = mem_array[{address_buffer[AddrMsb:AddrLsb]}];
+      insn.RVALID = 1'b1; // the sub is ready with the response
+      if(insn.RREADY)begin // manager is ready to accept data 
+        insn.RDATA = requested_data_buffer;
+        transfer_complete = 1'b1;
+      end 
+      else begin // manager is not ready to accept data 
+        transfer_complete = 1'b0;
+      end 
+    end 
+    Write_Address: begin
+      // if(data.WREADY && data.WVALID)begin
+      //   write_data_buffer = data.WDATA;
+      //   write_we = data.WSTRB;
+      //   data.BRESP = ResponseOkay;
+      //   if(data.BREADY)begin 
+      //     data.BVALID = 1'b1;
+      //     write_transfer_complete = 1'b1;
+      //   end 
+      //   else begin 
+      //     data.BVALID = 1'b0;
+      //     write_transfer_complete = 1'b0;
+      //   end 
+      // end 
+      // else begin 
+      //   write_transfer_complete = 1'b0;
+      // end 
+    end 
     default: begin 
-      address_done = 1'b0;
+      transfer_complete = 1'b0;
+      data.RVALID = 1'b0;
     end 
     endcase 
   end 
