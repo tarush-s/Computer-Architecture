@@ -155,15 +155,20 @@ module MemoryAxiLite #(
 `endif
 
   // TODO: changes will be needed throughout this module
-  localparam Idle = 3'b000;
-  localparam Read_Address = 3'b001;
-  localparam Read_Insn = 3'b010;
-  localparam Write_Address = 3'b011;
-  // localparam Write_Data = 3'b100;
-  // localparam Write_Response = 3'b101;
+  localparam ReadData_Idle = 1'b0;
+  localparam Read_Address = 1'b1;
+  localparam ReadInsn_Idle = 1'b0;
+  localparam Read_Insn = 1'b1;
+  localparam Write_Address = 1'b1;
+  localparam Write_Idle = 1'b0; 
 
-  logic[2:0] bus_state;
+  logic data_read_bus;
+  logic insn_read_bus;
+  logic write_bus;
+  logic[3:0] write_we;
   logic[`REG_SIZE] address_buffer; 
+  logic[`REG_SIZE] data_address_buffer; 
+  logic[`REG_SIZE] insn_address_buffer; 
 
   always_ff @(posedge axi.ACLK) begin
     if (!axi.ARESETn) begin
@@ -173,46 +178,49 @@ module MemoryAxiLite #(
       // start out ready to accept an incoming write
       data.AWREADY <= 1;
       data.WREADY <= 1;
-      // set the bus state to idle 
-      bus_state <= Idle;
+      // set the respective bus states to idle 
+      data_read_bus <= ReadData_Idle;
+      write_bus <= Write_Idle;
+      insn_read_bus <= ReadInsn_Idle;
     end 
     else begin
-      if(data.ARREADY && data.ARVALID)begin // manager has requested a data read at an address 
-        address_buffer <= data.ARADDR;  // store the address while its valid
-        bus_state <= Read_Address;      // direct the bus state 
+      if(data.ARREADY && data.ARVALID && insn.ARREADY && insn.ARVALID)begin 
+        data_address_buffer <= data.ARADDR;           // store the address while its valid 
+        insn_address_buffer <= insn.ARADDR;           // store the address while its valid
+        insn_read_bus <= Read_Insn; 
+        data_read_bus <= Read_Address;
+      end 
+      else if(data.ARREADY && data.ARVALID)begin      // manager has requested a data read at an address 
+        data_address_buffer <= data.ARADDR;           // store the address while its valid
+        data_read_bus <= Read_Address;           // direct the bus state 
       end
-      else if(insn.ARREADY && insn.ARVALID)begin // manager has requested an insn read at an address 
-        address_buffer <= insn.ARADDR;  // store the address while its valid
-        bus_state <= Read_Insn;         // direct the bus state 
+      else if(insn.ARREADY && insn.ARVALID)begin      // manager has requested an insn read at an address 
+        insn_address_buffer <= insn.ARADDR;           // store the address while its valid
+        insn_read_bus <= Read_Insn;              // direct the bus state 
       end 
       else if(data.AWREADY && data.AWVALID)begin // manager has requested a data write at an memory address 
-        address_buffer <= data.AWADDR; // store the address while its valid     
+        address_buffer <= data.AWADDR;           // store the address while its valid     
         if(data.WREADY && data.WVALID) begin
           write_data_buffer <= data.WDATA;
           write_we <= data.WSTRB;
-          bus_state <= Write_Address;      // direct the bus state
+          write_bus <= Write_Address;            // direct the bus state
         end 
         else begin
-          //ata.BVALID <= 1'b0;
+          write_bus <= Write_Idle;
         end 
       end 
-      else if(transfer_complete)begin 
-        bus_state <= Idle;
-      end 
-      else if(write_transfer_complete)begin
-        bus_state <= Idle;
-      end 
       else begin
-        // we have to preserve the previous state of the bus 
-        //data.BVALID <= 1'b0;
         address_buffer <= 32'b0;
+        write_bus <= Write_Idle;
+        data_read_bus <= ReadData_Idle;
+        insn_read_bus <= ReadInsn_Idle;
       end 
     end
   end 
-
+  
   // clocked stage just to write data into the buffer 
   always_ff@(posedge axi.ACLK) begin
-    if(bus_state == Write_Address)begin
+    if(write_bus == Write_Address)begin
       if(write_we[0])begin
         mem_array[address_buffer[AddrMsb:AddrLsb]][7:0] <= write_data_buffer[7:0];
       end
@@ -230,69 +238,75 @@ module MemoryAxiLite #(
 
   logic[`REG_SIZE] requested_data_buffer;
   logic[`REG_SIZE] write_data_buffer;
-  logic[3:0] write_we;
-  logic transfer_complete;
-  logic write_transfer_complete;
+  // logic transfer_complete;
+  // logic write_transfer_complete;
   
   always_comb begin
     requested_data_buffer = 32'b0;
-    transfer_complete = 1'b0;
-    write_transfer_complete = 1'b0;
-    //write_data_buffer = 32'b0;
+    // transfer_complete = 1'b0;
+    // write_transfer_complete = 1'b0;
     data.RVALID = 1'b0;
     data.BVALID = 1'b0;
     insn.RDATA = 32'b0;
     data.RDATA = 32'b0;
     data.RVALID = 1'b0;
     data.BRESP = ResponseOkay;
-    //write_we = 4'b0;
 
-    case(bus_state)
-    Idle: begin 
+    case(insn_read_bus)
+    ReadInsn_Idle: begin 
       // you can do stuff here when there is not traffic on the bus 
     end 
-    Read_Address: begin
-      requested_data_buffer = mem_array[{address_buffer[AddrMsb:AddrLsb]}];
-      data.RVALID = 1'b1; // the sub is ready with the response
-      if(data.RREADY)begin // manager is ready to accept data 
-        data.RDATA = requested_data_buffer;
-        transfer_complete = 1'b1;
-      end 
-      else begin // manager is not ready to accept data 
-        transfer_complete = 1'b0;
-      end 
-    end 
     Read_Insn: begin
-      requested_data_buffer = mem_array[{address_buffer[AddrMsb:AddrLsb]}];
+      requested_data_buffer = mem_array[{insn_address_buffer[AddrMsb:AddrLsb]}];
       insn.RVALID = 1'b1; // the sub is ready with the response
       if(insn.RREADY)begin // manager is ready to accept data 
         insn.RDATA = requested_data_buffer;
-        transfer_complete = 1'b1;
+        //transfer_complete = 1'b1;
       end 
       else begin // manager is not ready to accept data 
-        transfer_complete = 1'b0;
+        //transfer_complete = 1'b0;
       end 
     end 
-    Write_Address: begin
-      // if(data.WREADY && data.WVALID)begin
-      //   write_data_buffer = data.WDATA;
-      //   write_we = data.WSTRB;
-        if(data.BREADY)begin 
-           data.BVALID = 1'b1;
-          write_transfer_complete = 1'b1;
-        end 
-        else begin 
-          data.BVALID = 1'b0;
-          write_transfer_complete = 1'b0;
-        end 
+    default: begin 
+    end 
+    endcase
+
+    case(data_read_bus)
+    ReadData_Idle: begin 
+      // you can do stuff here when there is not traffic on the bus 
+    end 
+    Read_Address: begin
+      requested_data_buffer = mem_array[{data_address_buffer[AddrMsb:AddrLsb]}];
+      data.RVALID = 1'b1; // the sub is ready with the response
+      if(data.RREADY)begin // manager is ready to accept data 
+        data.RDATA = requested_data_buffer;
+       // transfer_complete = 1'b1;
       end 
-      // else begin 
-      //   write_transfer_complete = 1'b0;
-      // end 
-    //end 
+      else begin // manager is not ready to accept data 
+       // transfer_complete = 1'b0;
+      end 
+    end  
     default: begin 
     end 
     endcase 
+
+    case(write_bus)
+    Write_Idle: begin 
+      // you can do stuff here when there is not traffic on the bus 
+    end 
+    Write_Address: begin
+      if(data.BREADY)begin 
+        data.BVALID = 1'b1;
+      //  write_transfer_complete = 1'b1;
+      end 
+      else begin 
+        data.BVALID = 1'b0;
+      //  write_transfer_complete = 1'b0;
+      end 
+    end 
+    default:begin 
+    end 
+    endcase
   end 
 
 endmodule
