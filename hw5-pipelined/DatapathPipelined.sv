@@ -111,8 +111,8 @@ typedef struct packed {
   logic [`REG_SIZE] pc;
   logic [`INSN_SIZE] insn;
   logic [`OPCODE_SIZE] opcode;
-  logic wd_1;
-  logic wd_2;
+  logic [4:0] insn_rs1;
+  logic [4:0] insn_rs2;
   cycle_status_e cycle_status;
 } stage_decode_t;
 
@@ -251,40 +251,17 @@ module DatapathPipelined (
   logic [4:0] f_insn_rd;
   logic [`OPCODE_SIZE] f_insn_opcode;
   logic [`REG_SIZE] f_insn_branch;
-
-  logic wd_rs1_bypass;
-  logic wd_rs2_bypass;
   logic [`REG_SIZE] f_pc;
   
   always_comb begin
-    wd_rs1_bypass = 1'b0;
-    wd_rs2_bypass = 1'b0;
     f_insn_branch = 32'b0; 
     f_pc = 32'b0;
     //decode the instruction at fetch stage 
     {f_insn_funct7, f_insn_rs2, f_insn_rs1, f_insn_funct3, f_insn_rd, f_insn_opcode} = f_insn;
-
-    // handle wd bypassing 
-    if((f_insn_rs1 == m_insn_rd) && (f_insn_rs1 != 5'b0) && (f_insn_rs2 == m_insn_rd) && (f_insn_rs2 != 5'b0) && (m_opcode != OpcodeBranch) && (m_opcode != OpcodeStore) && (f_insn_opcode != OpcodeAuipc) && (f_insn_opcode != OpcodeLui) && (f_insn_opcode != OpcodeJal) && (f_insn_opcode != OpcodeJalr))begin 
-      wd_rs1_bypass = 1'b1; 
-      wd_rs2_bypass = 1'b1; 
-    end 
-    if((f_insn_rs1 == m_insn_rd) && (f_insn_rs1 != 5'b0) && (m_opcode != OpcodeBranch) && (m_opcode != OpcodeStore) && (f_insn_opcode != OpcodeAuipc) && (f_insn_opcode != OpcodeLui) && (f_insn_opcode != OpcodeJal))begin
-      wd_rs1_bypass = 1'b1; 
-    end 
-    else if((f_insn_rs2 == m_insn_rd) && (f_insn_rs2 != 5'b0) && (m_opcode != OpcodeBranch) && (m_opcode != OpcodeStore) && (f_insn_opcode != OpcodeRegImm) && (f_insn_opcode != OpcodeAuipc) && (f_insn_opcode != OpcodeLui) && (f_insn_opcode != OpcodeJal) && (f_insn_opcode != OpcodeJalr))begin
-      wd_rs2_bypass = 1'b1; 
-    end 
-    else begin
-       wd_rs1_bypass = 1'b0;
-       wd_rs2_bypass = 1'b0;
-    end
     //handle branching and stalls
     if(branch_taken)begin
       f_insn_branch = 32'b0;
       f_pc = 32'b0; 
-      wd_rs1_bypass = 1'b0;
-      wd_rs2_bypass = 1'b0;
       f_cycle_status = CYCLE_TAKEN_BRANCH;
     end  
     else if(fence_stall)begin
@@ -326,8 +303,8 @@ module DatapathPipelined (
   logic [`REG_SIZE] d_pc_current;
   logic [`REG_SIZE] d_insn;
   logic [`OPCODE_SIZE] d_opcode;
-  logic d_wd1_bypass;
-  logic d_wd2_bypass;
+  logic [4:0] d_insn_rs1;
+  logic [4:0] d_insn_rs2;
   cycle_status_e d_cycle_status;
   // this shows how to package up state in a `struct packed`, and how to pass it between stages
   stage_decode_t decode_state;
@@ -337,31 +314,31 @@ module DatapathPipelined (
         pc: 0,
         insn: 0,
         opcode: 0,
-        wd_1: 0,
-        wd_2: 0,
+        insn_rs1: 0,
+        insn_rs2: 0,
         cycle_status: CYCLE_RESET
       };
     end 
-    else if(load_use_stall || div_stall || fence_stall)begin 
-      // stall for a cycle
-    end 
-    else begin
-      begin
-        decode_state <= '{
-          pc: f_pc,
-          insn: f_insn_branch,
-          opcode: f_insn_opcode,
-          wd_1: wd_rs1_bypass,
-          wd_2: wd_rs2_bypass,
-          cycle_status: f_cycle_status
-        };
+    else begin 
+      if(load_use_stall || div_stall || fence_stall)begin 
+        // stall for a cycle
+      end 
+      else begin
+          decode_state <= '{
+            pc: f_pc,
+            insn: f_insn_branch,
+            opcode: f_insn_opcode,
+            insn_rs1: f_insn_rs1,
+            insn_rs2: f_insn_rs2,
+            cycle_status: f_cycle_status
+          };
       end
-    end
+    end 
   end
   assign d_insn = decode_state.insn;
   assign d_pc_current = decode_state.pc;
-  assign d_wd1_bypass = decode_state.wd_1;
-  assign d_wd2_bypass = decode_state.wd_2;
+  assign d_insn_rs1 = decode_state.insn_rs1;
+  assign d_insn_rs2 = decode_state.insn_rs2;
   assign d_cycle_status = decode_state.cycle_status;
   assign d_opcode = decode_state.opcode;
 
@@ -408,6 +385,8 @@ module DatapathPipelined (
   logic wx_rs2_bypass; 
   logic mx_rs1_bypass;
   logic mx_rs2_bypass;
+  logic wd_rs1_bypass;
+  logic wd_rs2_bypass;
   logic load_use_stall;
   logic [`REG_SIZE] d_insn_branch;
   logic [`REG_SIZE] d_pc;
@@ -425,6 +404,8 @@ module DatapathPipelined (
     wx_rs2_bypass = 1'b0;
     mx_rs1_bypass = 1'b0;
     mx_rs2_bypass = 1'b0;
+    wd_rs1_bypass = 1'b0;
+    wd_rs2_bypass = 1'b0;
     load_use_stall = 1'b0;
     div_stall = 1'b0;
     d_illegal_insn = 1'b0;
@@ -590,12 +571,15 @@ module DatapathPipelined (
         wx_rs2_bypass = 1'b0;
     end 
     // handle wd bypassing 
-    if(d_wd1_bypass)begin 
+    if((d_insn_rs1 == w_insn_rd) && (d_insn_rs1 != 5'b0) && (w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))begin 
       operand1 = w_in;
+      wd_rs1_bypass = 1'b1;
     end
-    if(d_wd2_bypass)begin 
+    if((d_insn_rs2 == w_insn_rd) && (d_insn_rs2 != 5'b0) && (w_opcode != OpcodeBranch) && (w_opcode != OpcodeStore) && (d_opcode != OpcodeRegImm) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin 
       operand2 = w_in;
+      wd_rs2_bypass = 1'b1;
     end 
+
     d_insn_branch = d_insn;
     d_pc = d_pc_current;   
   end 
