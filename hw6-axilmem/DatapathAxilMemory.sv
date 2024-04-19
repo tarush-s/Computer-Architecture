@@ -137,7 +137,7 @@ module MemoryAxiLite #(
   localparam int AddrLsb = 2;
 
   // [BR]RESP codes, from Section A 3.4.4 of AXI4 spec
-  //localparam bit [1:0] ResponseOkay = 2'b00;
+  localparam bit [1:0] ResponseOkay = 2'b00;
   // localparam bit [1:0] ResponseSubordinateError = 2'b10;
   // localparam bit [1:0] ResponseDecodeError = 2'b11;
 
@@ -186,30 +186,46 @@ module MemoryAxiLite #(
         bus_state <= Read_Insn;         // direct the bus state 
       end 
       else if(data.AWREADY && data.AWVALID)begin // manager has requested a data write at an memory address 
-        address_buffer <= data.AWADDR;
+        address_buffer <= data.AWADDR; // store the address while its valid     
+        if(data.WREADY && data.WVALID) begin
+          write_data_buffer <= data.WDATA;
+          write_we <= data.WSTRB;
+          bus_state <= Write_Address;      // direct the bus state
+        end 
+        else begin
+          //ata.BVALID <= 1'b0;
+        end 
       end 
       else if(transfer_complete)begin 
         bus_state <= Idle;
       end 
       else if(write_transfer_complete)begin
         bus_state <= Idle;
-        if(write_we[0])begin
-          mem_array[address_buffer[AddrMsb:AddrLsb]][7:0] <= write_data_buffer[7:0];
-        end
-        if(write_we[1])begin
-          mem_array[address_buffer[AddrMsb:AddrLsb]][15:8] <= write_data_buffer[15:8];
-        end
-        if(write_we[2])begin
-          mem_array[address_buffer[AddrMsb:AddrLsb]][23:16] <= write_data_buffer[23:16];
-        end
-        if(write_we[3])begin
-          mem_array[address_buffer[AddrMsb:AddrLsb]][31:24] <= write_data_buffer[31:24];
-        end
       end 
       else begin
         // we have to preserve the previous state of the bus 
+        //data.BVALID <= 1'b0;
+        address_buffer <= 32'b0;
       end 
     end
+  end 
+
+  // clocked stage just to write data into the buffer 
+  always_ff@(posedge axi.ACLK) begin
+    if(bus_state == Write_Address)begin
+      if(write_we[0])begin
+        mem_array[address_buffer[AddrMsb:AddrLsb]][7:0] <= write_data_buffer[7:0];
+      end
+      if(write_we[1])begin
+        mem_array[address_buffer[AddrMsb:AddrLsb]][15:8] <= write_data_buffer[15:8];
+      end
+      if(write_we[2])begin
+        mem_array[address_buffer[AddrMsb:AddrLsb]][23:16] <= write_data_buffer[23:16];
+      end
+      if(write_we[3])begin
+        mem_array[address_buffer[AddrMsb:AddrLsb]][31:24] <= write_data_buffer[31:24];
+      end
+    end 
   end 
 
   logic[`REG_SIZE] requested_data_buffer;
@@ -222,16 +238,18 @@ module MemoryAxiLite #(
     requested_data_buffer = 32'b0;
     transfer_complete = 1'b0;
     write_transfer_complete = 1'b0;
+    //write_data_buffer = 32'b0;
     data.RVALID = 1'b0;
+    data.BVALID = 1'b0;
     insn.RDATA = 32'b0;
     data.RDATA = 32'b0;
     data.RVALID = 1'b0;
+    data.BRESP = ResponseOkay;
+    //write_we = 4'b0;
 
     case(bus_state)
     Idle: begin 
       // you can do stuff here when there is not traffic on the bus 
-      transfer_complete = 1'b0;
-
     end 
     Read_Address: begin
       requested_data_buffer = mem_array[{address_buffer[AddrMsb:AddrLsb]}];
@@ -259,23 +277,20 @@ module MemoryAxiLite #(
       // if(data.WREADY && data.WVALID)begin
       //   write_data_buffer = data.WDATA;
       //   write_we = data.WSTRB;
-      //   data.BRESP = ResponseOkay;
-      //   if(data.BREADY)begin 
-      //     data.BVALID = 1'b1;
-      //     write_transfer_complete = 1'b1;
-      //   end 
-      //   else begin 
-      //     data.BVALID = 1'b0;
-      //     write_transfer_complete = 1'b0;
-      //   end 
-      // end 
+        if(data.BREADY)begin 
+           data.BVALID = 1'b1;
+          write_transfer_complete = 1'b1;
+        end 
+        else begin 
+          data.BVALID = 1'b0;
+          write_transfer_complete = 1'b0;
+        end 
+      end 
       // else begin 
       //   write_transfer_complete = 1'b0;
       // end 
-    end 
+    //end 
     default: begin 
-      transfer_complete = 1'b0;
-      data.RVALID = 1'b0;
     end 
     endcase 
   end 
