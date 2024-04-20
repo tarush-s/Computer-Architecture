@@ -567,7 +567,6 @@ module DatapathAxilMemory (
   wire [`REG_SIZE] f_insn;
   cycle_status_e f_cycle_status;
   logic [`REG_SIZE] branch_pc;
-  logic pc_write;
   // program counter
   always_ff @(posedge clk) begin
     if (rst) begin
@@ -579,31 +578,23 @@ module DatapathAxilMemory (
       if(branch_taken)begin // branch is not taken
         // adjust the pc to go back 3 clock cycles or 12 in decimal value 
         f_pc_current <= branch_pc;
-        pc_write <= 1'b0;
+        imem.ARVALID <= 1'b1;
       end 
       else if(load_use_stall)begin 
         // stall for a cycle as load use in pipeline
-        pc_write <= 1'b0;
+        imem.ARVALID <= 1'b0;
       end
       else if(fence_stall)begin 
         // stall for fence preceded by store
-        pc_write <= 1'b0;
+        imem.ARVALID <= 1'b0;
       end 
       else if(div_stall)begin 
-        pc_write <= 1'b0;
+        imem.ARVALID <= 1'b0;
+
       end  
       else begin // branch is takken 
-        // assume normal operation
         f_pc_current <= f_pc_current + 32'd4; 
-       // if(imem.ARREADY)begin
-          // imem.ARVALID <= 1'b1;
-          // imem.ARADDR <= f_pc_current;
-           pc_write <= 1'b1;
-        //end 
-       // else begin 
-         // imem.ARVALID <= 1'b0;
-          //pc_write <= 1'b0;
-       // end
+        imem.ARVALID <= 1'b1;
       end 
     end
   end
@@ -623,7 +614,7 @@ module DatapathAxilMemory (
   always_comb begin
     //f_insn_branch = 32'b0; 
     f_pc = 32'b0;
-    imem.ARVALID = 1'b0;
+    // imem.ARVALID = 1'b0;
     imem.ARADDR = 32'b0;
     //decode the instruction at fetch stage 
     //{f_insn_funct7, f_insn_rs2, f_insn_rs1, f_insn_funct3, f_insn_rd, f_insn_opcode} = f_insn;
@@ -650,12 +641,12 @@ module DatapathAxilMemory (
     end 
     else begin
       f_pc = f_pc_current;
-      if(pc_write && imem.ARREADY)begin
-        imem.ARVALID = 1'b1;
+      if(imem.ARREADY)begin
+        // imem.ARVALID = 1'b1;
         imem.ARADDR = f_pc_current;
       end 
       else begin 
-        imem.ARVALID = 1'b0;
+        // imem.ARVALID = 1'b0;
       end 
       //f_insn_branch = f_insn; 
       f_cycle_status = CYCLE_NO_STALL;
@@ -684,6 +675,25 @@ module DatapathAxilMemory (
   logic [4:0] d_insn_rs1;
   logic [4:0] d_insn_rs2;
   cycle_status_e d_cycle_status;
+
+  // stage_decode_t decode_state_buffer;
+  always_comb begin
+    insn_buffer = 32'b0;
+    decode_state_buffer = 0;
+    if(imem.RVALID)begin
+      insn_buffer = imem.RDATA;
+      // decode_state_buffer = '{
+      //   pc: f_pc,
+      //   insn: insn_buffer,
+      //   opcode: insn_buffer[6:0],
+      //   insn_rs1: insn_buffer[19:15],
+      //   insn_rs2: insn_buffer[24:20],
+      //   cycle_status: f_cycle_status
+      // };
+    end
+    else begin 
+    end   
+  end 
   // this shows how to package up state in a `struct packed`, and how to pass it between stages
   stage_decode_t decode_state;
   always_ff @(posedge clk) begin
@@ -702,27 +712,18 @@ module DatapathAxilMemory (
         // stall for a cycle
       end 
       else begin
-          if(imem.RVALID)begin
-            //insn_buffer <= imem.RDATA;
-            decode_state <= '{
-            pc: f_pc,
-            insn: imem.RDATA,
-            opcode: imem.RDATA[6:0],
-            insn_rs1: imem.RDATA[19:15],
-            insn_rs2: imem.RDATA[24:20],
-            cycle_status: f_cycle_status
-          };
-      end
-          end 
-      //     decode_state <= '{
-      //       pc: f_pc,
-      //       insn: insn_buffer,
-      //       opcode: insn_buffer[6:0],
-      //       insn_rs1: insn_buffer[19:15],
-      //       insn_rs2: insn_buffer[24:20],
-      //       cycle_status: f_cycle_status
-      //     };
-      // end
+        //decode_state <= decode_state_buffer;
+        //if(imem.RVALID)begin
+          decode_state <= '{
+          pc: f_pc,
+          insn: insn_buffer,
+          opcode: insn_buffer[6:0],
+          insn_rs1: insn_buffer[19:15],
+          insn_rs2: insn_buffer[24:20],
+          cycle_status: f_cycle_status
+        };
+        //end
+      end 
     end 
   end
   assign d_insn = decode_state.insn;
