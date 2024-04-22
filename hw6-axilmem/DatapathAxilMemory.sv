@@ -583,9 +583,9 @@ module DatapathAxilMemory (
   /***************/
 
   logic [`REG_SIZE] f_pc_current;
-  wire [`REG_SIZE] f_insn;
-  logic [`REG_SIZE] f_pc;
-  logic [`REG_SIZE] f_insn_branch;
+  // wire [`REG_SIZE] f_insn;
+  // logic [`REG_SIZE] f_pc;
+  // logic [`REG_SIZE] f_insn_branch;
   cycle_status_e f_cycle_status;
   logic [`REG_SIZE] branch_pc;
   // program counter
@@ -616,36 +616,36 @@ module DatapathAxilMemory (
     end
   end
 
-    always_comb begin
-    f_insn_branch = 32'b0; 
-    f_pc = 32'b0;
-    //handle branching and stalls
-    if(branch_taken)begin
-      f_insn_branch = 32'b0;
-      f_pc = 32'b0; 
-      f_cycle_status = CYCLE_TAKEN_BRANCH;
-    end  
-    else if(fence_stall)begin
-      f_pc = f_pc_current;
-      f_insn_branch = f_insn;
-      f_cycle_status = CYCLE_FENCE; 
-    end 
-    else if(load_use_stall)begin
-      f_pc = f_pc_current;
-      f_insn_branch = f_insn;
-      f_cycle_status = CYCLE_LOAD2USE;
-    end 
-    else if(div_stall)begin 
-      f_pc = f_pc_current;
-      f_insn_branch = f_insn;
-      f_cycle_status = CYCLE_DIV2USE;
-    end 
-    else begin
-      f_pc = f_pc_current;
-      f_insn_branch = f_insn; 
-      f_cycle_status = CYCLE_NO_STALL;
-    end 
-  end 
+  //   always_comb begin
+  //   f_insn_branch = 32'b0; 
+  //   f_pc = 32'b0;
+  //   //handle branching and stalls
+  //   if(branch_taken)begin
+  //     f_insn_branch = 32'b0;
+  //     f_pc = 32'b0; 
+  //     f_cycle_status = CYCLE_TAKEN_BRANCH;
+  //   end  
+  //   else if(fence_stall)begin
+  //     f_pc = f_pc_current;
+  //     f_insn_branch = f_insn;
+  //     f_cycle_status = CYCLE_FENCE; 
+  //   end 
+  //   else if(load_use_stall)begin
+  //     f_pc = f_pc_current;
+  //     f_insn_branch = f_insn;
+  //     f_cycle_status = CYCLE_LOAD2USE;
+  //   end 
+  //   else if(div_stall)begin 
+  //     f_pc = f_pc_current;
+  //     f_insn_branch = f_insn;
+  //     f_cycle_status = CYCLE_DIV2USE;
+  //   end 
+  //   else begin
+  //     f_pc = f_pc_current;
+  //     f_insn_branch = f_insn; 
+  //     f_cycle_status = CYCLE_NO_STALL;
+  //   end 
+  // end 
 
   always_comb begin
     imem.ARADDR = 32'b0;
