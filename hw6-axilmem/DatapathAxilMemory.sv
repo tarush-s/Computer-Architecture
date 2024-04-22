@@ -584,6 +584,8 @@ module DatapathAxilMemory (
 
   logic [`REG_SIZE] f_pc_current;
   wire [`REG_SIZE] f_insn;
+  logic [`REG_SIZE] f_pc;
+  logic [`REG_SIZE] f_insn_branch;
   cycle_status_e f_cycle_status;
   logic [`REG_SIZE] branch_pc;
   // program counter
@@ -613,6 +615,37 @@ module DatapathAxilMemory (
       end 
     end
   end
+
+    always_comb begin
+    f_insn_branch = 32'b0; 
+    f_pc = 32'b0;
+    //handle branching and stalls
+    if(branch_taken)begin
+      f_insn_branch = 32'b0;
+      f_pc = 32'b0; 
+      f_cycle_status = CYCLE_TAKEN_BRANCH;
+    end  
+    else if(fence_stall)begin
+      f_pc = f_pc_current;
+      f_insn_branch = f_insn;
+      f_cycle_status = CYCLE_FENCE; 
+    end 
+    else if(load_use_stall)begin
+      f_pc = f_pc_current;
+      f_insn_branch = f_insn;
+      f_cycle_status = CYCLE_LOAD2USE;
+    end 
+    else if(div_stall)begin 
+      f_pc = f_pc_current;
+      f_insn_branch = f_insn;
+      f_cycle_status = CYCLE_DIV2USE;
+    end 
+    else begin
+      f_pc = f_pc_current;
+      f_insn_branch = f_insn; 
+      f_cycle_status = CYCLE_NO_STALL;
+    end 
+  end 
 
   always_comb begin
     imem.ARADDR = 32'b0;
@@ -669,7 +702,7 @@ module DatapathAxilMemory (
         opcode: insn_buffer[6:0],
         insn_rs1: insn_buffer[19:15],
         insn_rs2: insn_buffer[24:20],
-        cycle_status: CYCLE_LOAD2USE
+        cycle_status: d1_cycle_status
       };   
     end 
     else if(m_fence_stall)begin
@@ -681,7 +714,7 @@ module DatapathAxilMemory (
         opcode: insn_buffer[6:0],
         insn_rs1: insn_buffer[19:15],
         insn_rs2: insn_buffer[24:20],
-        cycle_status: CYCLE_FENCE
+        cycle_status: d1_cycle_status
       };     
     end
     else if(m_div_stall)begin 
@@ -693,7 +726,7 @@ module DatapathAxilMemory (
         opcode: insn_buffer[6:0],
         insn_rs1: insn_buffer[19:15],
         insn_rs2: insn_buffer[24:20],
-        cycle_status: CYCLE_DIV2USE
+        cycle_status: d1_cycle_status
       };
     end 
     else if(branch_taken || m_branch_taken)begin
@@ -709,7 +742,7 @@ module DatapathAxilMemory (
           opcode: insn_buffer[6:0],
           insn_rs1: insn_buffer[19:15],
           insn_rs2: insn_buffer[24:20],
-          cycle_status: d1_cycle_status
+          cycle_status: CYCLE_NO_STALL
         };
       end 
       else begin 
@@ -1311,6 +1344,9 @@ module DatapathAxilMemory (
       dmem.ARVALID = 1'b1;
     end 
     OpcodeStore: begin 
+      if((x_opcode_comb == OpcodeStore) && (m_opcode == OpcodeLoad) && (x_insn_rs2 == m_insn_rd))begin 
+        x_operand2 = m_result;
+      end 
       load_store = 1'b1;
       address_intermediate = $signed(x_operand1)  + $signed(x_imm);
       address_datamemory = (address_intermediate & 32'hFFFF_FFFC);
