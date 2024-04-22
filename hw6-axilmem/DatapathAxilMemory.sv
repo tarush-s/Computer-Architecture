@@ -259,7 +259,7 @@ module MemoryAxiLite #(
     data.BVALID = 1'b0;
     insn.RDATA = 32'b0;
     data.RDATA = 32'b0;
-    data.RVALID = 1'b0;
+    insn.RVALID = 1'b0;
     data.BRESP = ResponseOkay;
 
     case(insn_read_bus)
@@ -286,6 +286,8 @@ module MemoryAxiLite #(
     ReadData_Idle: begin 
       // you can do stuff here when there is not traffic on the bus 
       readdata_busy = 1'b0;
+      data.RVALID = 1'b0;
+      data.RDATA = 32'b0;
     end 
     Read_Address: begin
       readdata_busy = 1'b1;
@@ -299,6 +301,7 @@ module MemoryAxiLite #(
       end 
     end  
     default: begin 
+      data.RVALID = 1'b0;
     end 
     endcase 
 
@@ -491,6 +494,9 @@ typedef struct packed {
   logic [`REG_SIZE] load_store_address;
   logic wm_rd;
   logic [3:0] div_instruction;
+  logic div_stall;
+  logic fence_stall;
+  logic load_use_stall;
 } stage_memory_t;
 
 //** state at the start of the writeback stage */
@@ -516,12 +522,12 @@ module DatapathAxilMemory (
     axi_if.manager imem,
 
     // Once imem is working, replace this interface to dmem...
-    output logic [`REG_SIZE] addr_to_dmem,
-    input wire [`REG_SIZE] load_data_from_dmem,
-    output logic [`REG_SIZE] store_data_to_dmem,
-    output logic [3:0] store_we_to_dmem,
+    // output logic [`REG_SIZE] addr_to_dmem,
+    // input wire [`REG_SIZE] load_data_from_dmem,
+    // output logic [`REG_SIZE] store_data_to_dmem,
+    // output logic [3:0] store_we_to_dmem,
     // ...with this AXIL one
-    // axi_if.manager dmem,
+     axi_if.manager dmem,
 
     output logic halt,
 
@@ -573,69 +579,35 @@ module DatapathAxilMemory (
       f_pc_current <= 32'd0;
       // NB: use CYCLE_NO_STALL since this is the value that will persist after the last reset cycle
       imem.RREADY <= 1'b1;
+      dmem.RREADY <= 1'b1;
       //imem.ARVALID <= 1'b0;
-    end else begin
-      if(branch_taken)begin // branch is not taken
+    end 
+    else begin
+      if(branch_taken)begin // branch is taken
         // adjust the pc to go back 3 clock cycles or 12 in decimal value 
         f_pc_current <= branch_pc;
-        imem.ARVALID <= 1'b1;
       end 
-      else if(load_use_stall || fence_stall || div_stall)begin 
-        // stall for a cycle as load use in pipeline
-        imem.ARVALID <= 1'b0;
-      end  
-      else begin // branch is takken 
+      // else if(load_use_stall)begin 
+      //   // stall for a cycle as load use in pipeline
+      // end  
+      else if(fence_stall)begin 
+      end
+      // else if(div_stall)begin 
+      // end
+      else begin // normal operation 
         f_pc_current <= f_pc_current + 32'd4;
         imem.ARVALID <= 1'b1;
       end 
     end
   end
 
-  // logic [`REG_SIZE] f_insn_branch;
-  // logic [`REG_SIZE] f_pc;
-  // always_comb begin 
-  //   f_insn_branch = 32'b0; 
-  //   f_pc = 32'b0;
-
-  //   if(branch_taken)begin
-  //     f_insn_branch = 32'b0;
-  //     f_pc = 32'b0; 
-  //     f_cycle_status = CYCLE_TAKEN_BRANCH;
-  //   end  
-  //   else if(fence_stall)begin
-  //     f_pc = f_pc_current;
-  //     f_insn_branch = f_insn;
-  //     f_cycle_status = CYCLE_FENCE; 
-  //   end 
-  //   else if(load_use_stall)begin
-  //     f_pc = f_pc_current;
-  //     f_insn_branch = f_insn;
-  //     f_cycle_status = CYCLE_LOAD2USE;
-  //   end 
-  //   else if(div_stall)begin 
-  //     f_pc = f_pc_current;
-  //     f_insn_branch = f_insn;
-  //     f_cycle_status = CYCLE_DIV2USE;
-  //   end 
-  //   else begin
-  //     f_pc = f_pc_current;
-  //     f_insn_branch = f_insn; 
-  //     f_cycle_status = CYCLE_NO_STALL;
-  //   end 
-  // end 
-
   always_comb begin
     imem.ARADDR = 32'b0;
     //handle branching and stalls 
-    if(load_use_stall || fence_stall || div_stall)begin
-      //f_insn_branch = f_insn;
+    if(imem.ARREADY)begin
+      imem.ARADDR = f_pc_current;
     end 
-    else begin
-      if(imem.ARREADY)begin
-        imem.ARADDR = f_pc_current;
-      end 
-      else begin 
-      end 
+    else begin 
     end 
   end 
 
@@ -643,38 +615,74 @@ module DatapathAxilMemory (
   /* DECODE STAGE */
   /****************/
 
+
+  cycle_status_e d1_cycle_status;
+  logic [`REG_SIZE] stall_insn_buffer;
+
+  always_ff @(posedge clk)begin
+    if(rst)begin
+      d1_cycle_status <= CYCLE_RESET; 
+      stall_insn_buffer <= 32'b0;
+    end 
+    else begin 
+      if(m_fence_stall)begin 
+      end 
+      else begin
+        stall_insn_buffer <= imem.RDATA;
+        d1_cycle_status <= CYCLE_NO_STALL;
+      end 
+    end 
+  end 
+
   logic [`REG_SIZE] d_pc_current;
   logic [`REG_SIZE] d_insn;
   logic [`REG_SIZE] insn_buffer;
   logic [`OPCODE_SIZE] d_opcode;
   logic [4:0] d_insn_rs1;
   logic [4:0] d_insn_rs2;
-  cycle_status_e d1_cycle_status;
   cycle_status_e d_cycle_status;
   stage_decode_t decode_state;
-
-  always_ff @(posedge clk)begin
-    if(rst)begin
-      d1_cycle_status <= CYCLE_RESET; 
-    end 
-    else begin 
-      d1_cycle_status <= CYCLE_NO_STALL;
-    end 
-  end 
 
   always_comb begin
     insn_buffer = 32'b0;
     decode_state = 0; 
     decode_state.cycle_status = d1_cycle_status;
-    if(load_use_stall)begin 
-        // stall for a cycle
-    end 
-    else if(div_stall)begin
+    if(m_load_use_stall)begin 
       // stall for a cycle
+      insn_buffer = stall_insn_buffer;
+      decode_state = '{
+        pc: f_pc_current - 32'd4,
+        insn: insn_buffer,
+        opcode: insn_buffer[6:0],
+        insn_rs1: insn_buffer[19:15],
+        insn_rs2: insn_buffer[24:20],
+        cycle_status: CYCLE_LOAD2USE
+      };   
+    end 
+    else if(m_fence_stall)begin
+      // stall for a cycle  
+      insn_buffer = stall_insn_buffer;
+      decode_state = '{
+        pc: f_pc_current - 32'd4,
+        insn: insn_buffer,
+        opcode: insn_buffer[6:0],
+        insn_rs1: insn_buffer[19:15],
+        insn_rs2: insn_buffer[24:20],
+        cycle_status: CYCLE_FENCE
+      };     
     end
-    else if(fence_stall)begin
-      // stall for a cycle        
-    end
+    else if(m_div_stall)begin 
+      //stall for one cycle
+      insn_buffer = stall_insn_buffer;
+      decode_state = '{
+        pc: f_pc_current - 32'd4,
+        insn: insn_buffer,
+        opcode: insn_buffer[6:0],
+        insn_rs1: insn_buffer[19:15],
+        insn_rs2: insn_buffer[24:20],
+        cycle_status: CYCLE_DIV2USE
+      };
+    end 
     else if(branch_taken || m_branch_taken)begin
       decode_state = 0;
       decode_state.cycle_status = CYCLE_TAKEN_BRANCH; 
@@ -682,7 +690,7 @@ module DatapathAxilMemory (
     else begin 
       if(imem.RVALID)begin
         insn_buffer = imem.RDATA;
-          decode_state = '{
+        decode_state = '{
           pc: f_pc_current - 32'd4,
           insn: insn_buffer,
           opcode: insn_buffer[6:0],
@@ -863,10 +871,10 @@ module DatapathAxilMemory (
     OpcodeMiscMem: begin
       //fence instruction stall signa is triggered 
       if((x_opcode_comb == OpcodeStore) || (m_opcode == OpcodeStore))begin 
-      //   fence_stall = 1'b1;
-      // end 
-      // else begin 
-      //   fence_stall = 1'b0;
+        fence_stall = 1'b1;
+      end 
+      else begin 
+        fence_stall = 1'b0;
      end 
     end 
     OpcodeEnviron: begin
@@ -877,26 +885,26 @@ module DatapathAxilMemory (
     end 
     endcase
  
-    // if((div) && ((d_insn_rs1 == x_insn_rd) || (d_insn_rs2 == x_insn_rd)))begin 
-    //   // the cycle after the system stall, div has got cirrect result in the execute stage 
-    //   div_stall = 1'b1;
-    // end 
-    // else begin 
-    //   div_stall = 1'b0;
-    // end 
+    if((div) && ((d_insn_rs1 == x_insn_rd) || (d_insn_rs2 == x_insn_rd)))begin 
+      // the cycle after the system stall, div has got cirrect result in the execute stage 
+      div_stall = 1'b1;
+    end 
+    else begin 
+      div_stall = 1'b0;
+    end 
 
-    // //Hazard detection
-    // // load use bypass and stall 
-    // if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (d_opcode != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui)) || ((insn_rs2 == x_insn_rd) && (d_opcode != OpcodeLoad) && (d_opcode != OpcodeStore) && (insn_rs2 != 5'b0) && (d_opcode != OpcodeRegImm) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))) && (x_opcode_comb == OpcodeLoad))begin
-    //   load_use_stall = 1'b1;
-    // end
-    // // this is done wa address bypass and stall 
-    // else if((x_opcode == OpcodeLoad) && (d_opcode == OpcodeStore) && (insn_rs1 == x_insn_rd) && (x_insn_rd != 5'b0))begin
-    //   load_use_stall = 1'b1;
-    // end 
-    // else begin
-    //   load_use_stall = 1'b0;
-    // end 
+    //Hazard detection
+    // load use bypass and stall 
+    if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (d_opcode != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui)) || ((insn_rs2 == x_insn_rd) && (d_opcode != OpcodeLoad) && (d_opcode != OpcodeStore) && (insn_rs2 != 5'b0) && (d_opcode != OpcodeRegImm) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))) && (x_opcode_comb == OpcodeLoad))begin
+      load_use_stall = 1'b1;
+    end
+    // this is done wa address bypass and stall 
+    else if((x_opcode == OpcodeLoad) && (d_opcode == OpcodeStore) && (insn_rs1 == x_insn_rd) && (x_insn_rd != 5'b0))begin
+      load_use_stall = 1'b1;
+    end 
+    else begin
+      load_use_stall = 1'b0;
+    end 
     // dont trigger branch when the instruction in the x stage is a branch instruction or a load instruction or a store instruction
     if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin
       mx_rs1_bypass = 1'b1;
@@ -1061,6 +1069,7 @@ module DatapathAxilMemory (
   // Control Signals for data memeory  
   logic [`REG_SIZE] address_datamemory;
   logic [`REG_SIZE] address_intermediate;
+  logic load_store;
   // control signal for wm bypass
   logic wm_bypass;
   //control signal for divider 
@@ -1094,8 +1103,11 @@ module DatapathAxilMemory (
     //data memory signals
     address_datamemory = 32'b0;
     address_intermediate = 32'b0;
+    dmem.ARADDR = 32'b0;
+    dmem.ARVALID = 1'b0;
+    load_store = 1'b0;
     wm_bypass = 1'b0;
- 
+
     // handle hazards 
     if(d_mx_rs2_bypass)begin
       x_operand2 =  m_in;
@@ -1272,12 +1284,18 @@ module DatapathAxilMemory (
       end 
     end    
     OpcodeLoad: begin
+      load_store = 1'b1;
       address_intermediate = $signed(x_operand1) + $signed(x_imm);
       address_datamemory = (address_intermediate & 32'hFFFF_FFFC); 
+      dmem.ARADDR = (address_intermediate & 32'hFFFF_FFFC);
+      dmem.ARVALID = 1'b1;
     end 
     OpcodeStore: begin 
+      load_store = 1'b1;
       address_intermediate = $signed(x_operand1)  + $signed(x_imm);
-      address_datamemory = (address_intermediate & 32'hFFFF_FFFC);   
+      address_datamemory = (address_intermediate & 32'hFFFF_FFFC);
+      dmem.ARADDR = (address_intermediate & 32'hFFFF_FFFC); 
+      dmem.ARVALID = 1'b1;  
     end 
     OpcodeBranch: begin
       if(x_insn[14:12] == 3'b000 )begin //beq
@@ -1355,6 +1373,15 @@ module DatapathAxilMemory (
     end 
   end 
 
+  // always_ff @(posedge clk)begin
+  //   if(load_store)begin
+  //     dmem.ARVALID <= 1'b1; 
+  //   end 
+  //   else begin
+  //     dmem.ARVALID <= 1'b0; 
+  //   end
+  // end 
+
   //*********fix this 
   cla a1(.a(cla_a),
           .b(cla_b),
@@ -1391,6 +1418,9 @@ module DatapathAxilMemory (
   logic [`REG_SIZE] m_address_intermediate;  
   logic m_wm;
   logic [3:0] m_div_insn;
+  logic m_div_stall;
+  logic m_fence_stall;
+  logic m_load_use_stall;
 
   stage_memory_t memory_state;
   always_ff@ (posedge clk)begin
@@ -1407,7 +1437,10 @@ module DatapathAxilMemory (
         load_store_adr_interm : 0,
         load_store_address : 0,
         wm_rd : 0,
-        div_instruction : 0
+        div_instruction : 0,
+        div_stall: 0,
+        fence_stall: 0,
+        load_use_stall: 0
       };
     end 
     else begin 
@@ -1423,11 +1456,17 @@ module DatapathAxilMemory (
         load_store_adr_interm : address_intermediate,
         load_store_address : address_datamemory,
         wm_rd : wm_bypass,
-        div_instruction : div_insn
+        div_instruction : div_insn,
+        div_stall : div_stall,
+        fence_stall : fence_stall,
+        load_use_stall : load_use_stall
       };
     end 
   end 
 
+  assign m_load_use_stall = memory_state.load_use_stall;
+  assign m_fence_stall = memory_state.fence_stall;
+  assign m_div_stall = memory_state.div_stall;
   assign m_operand1 = memory_state.operand1;
   assign m_operand2_temp = memory_state.operand2;
   assign m_imm = memory_state.imm_value;     
@@ -1476,7 +1515,11 @@ module DatapathAxilMemory (
     case(m_opcode)
     OpcodeLoad: begin 
       // implement load here
-      data_from_mem = load_data_from_dmem;
+      if(dmem.RVALID)begin
+       data_from_mem = dmem.RDATA;
+      end 
+      else begin 
+      end 
       if(m_insn[14:12] == 3'b000) begin //lb
         if(m_address_intermediate[1:0] == 2'b00) begin
           m_result = {{24{data_from_mem[7]}},data_from_mem[7:0]}; 
@@ -1598,9 +1641,9 @@ module DatapathAxilMemory (
     endcase 
   end 
 
-  assign store_we_to_dmem = datamem_we;
-  assign store_data_to_dmem = store_data;
-  assign addr_to_dmem = m_load_store_address;
+  // assign store_we_to_dmem = datamem_we;
+  // assign store_data_to_dmem = store_data;
+  // assign addr_to_dmem = m_load_store_address;
   //assign m_loaded_data = load_data_from_dmem;
 
   // for simulation 
@@ -1820,10 +1863,7 @@ module RiscvProcessor (
       .clk(clk),
       .rst(rst),
       .imem(axi_insn.manager),
-      .addr_to_dmem(mem_data_addr),
-      .store_data_to_dmem(mem_data_to_write),
-      .store_we_to_dmem(mem_data_we),
-      .load_data_from_dmem(mem_data_loaded_value),
+      .dmem(axi_data.manager),
       .halt(halt),
       .trace_writeback_pc(trace_writeback_pc),
       .trace_writeback_insn(trace_writeback_insn),
