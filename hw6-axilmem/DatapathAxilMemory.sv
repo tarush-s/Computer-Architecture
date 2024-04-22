@@ -591,11 +591,41 @@ module DatapathAxilMemory (
     end
   end
 
-  logic [`REG_SIZE] f_pc;
+  // logic [`REG_SIZE] f_insn_branch;
+  // logic [`REG_SIZE] f_pc;
+  // always_comb begin 
+  //   f_insn_branch = 32'b0; 
+  //   f_pc = 32'b0;
+
+  //   if(branch_taken)begin
+  //     f_insn_branch = 32'b0;
+  //     f_pc = 32'b0; 
+  //     f_cycle_status = CYCLE_TAKEN_BRANCH;
+  //   end  
+  //   else if(fence_stall)begin
+  //     f_pc = f_pc_current;
+  //     f_insn_branch = f_insn;
+  //     f_cycle_status = CYCLE_FENCE; 
+  //   end 
+  //   else if(load_use_stall)begin
+  //     f_pc = f_pc_current;
+  //     f_insn_branch = f_insn;
+  //     f_cycle_status = CYCLE_LOAD2USE;
+  //   end 
+  //   else if(div_stall)begin 
+  //     f_pc = f_pc_current;
+  //     f_insn_branch = f_insn;
+  //     f_cycle_status = CYCLE_DIV2USE;
+  //   end 
+  //   else begin
+  //     f_pc = f_pc_current;
+  //     f_insn_branch = f_insn; 
+  //     f_cycle_status = CYCLE_NO_STALL;
+  //   end 
+  // end 
+
   always_comb begin
     imem.ARADDR = 32'b0;
-    f_pc = 32'b0;
-    f_cycle_status = CYCLE_INVALID;
     //handle branching and stalls 
     if(load_use_stall || fence_stall || div_stall)begin
       //f_insn_branch = f_insn;
@@ -636,20 +666,16 @@ module DatapathAxilMemory (
     insn_buffer = 32'b0;
     decode_state = 0; 
     decode_state.cycle_status = d1_cycle_status;
-    // if(load_use_stall)begin 
-    //     // stall for a cycle
-    //     //decode_state.cycle_status = CYCLE_LOAD2USE;
-    // end 
-    // else if(div_stall)begin
-    //   // stall for a cycle
-    //   //decode_state.cycle_status = CYCLE_DIV2USE;
-    // end
-    // else if(fence_stall)begin
-    //   // stall for a cycle        
-    //   //decode_state.cycle_status = CYCLE_FENCE;
-    // end
-    // else 
-    if(branch_taken || m_branch_taken)begin
+    if(load_use_stall)begin 
+        // stall for a cycle
+    end 
+    else if(div_stall)begin
+      // stall for a cycle
+    end
+    else if(fence_stall)begin
+      // stall for a cycle        
+    end
+    else if(branch_taken || m_branch_taken)begin
       decode_state = 0;
       decode_state.cycle_status = CYCLE_TAKEN_BRANCH; 
     end 
