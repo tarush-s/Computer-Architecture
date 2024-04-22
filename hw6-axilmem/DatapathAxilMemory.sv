@@ -572,14 +572,12 @@ module DatapathAxilMemory (
     if (rst) begin
       f_pc_current <= 32'd0;
       // NB: use CYCLE_NO_STALL since this is the value that will persist after the last reset cycle
-      f_cycle_status <= CYCLE_NO_STALL;
       imem.RREADY <= 1'b1;
       //imem.ARVALID <= 1'b0;
     end else begin
       if(branch_taken)begin // branch is not taken
         // adjust the pc to go back 3 clock cycles or 12 in decimal value 
         f_pc_current <= branch_pc;
-        f_cycle_status <= CYCLE_TAKEN_BRANCH;
         imem.ARVALID <= 1'b1;
       end 
       else if(load_use_stall || fence_stall || div_stall)begin 
@@ -587,15 +585,17 @@ module DatapathAxilMemory (
         imem.ARVALID <= 1'b0;
       end  
       else begin // branch is takken 
-        f_pc_current <= f_pc_current + 32'd4; 
+        f_pc_current <= f_pc_current + 32'd4;
         imem.ARVALID <= 1'b1;
-        f_cycle_status <= CYCLE_NO_STALL;
       end 
     end
   end
 
+  logic [`REG_SIZE] f_pc;
   always_comb begin
     imem.ARADDR = 32'b0;
+    f_pc = 32'b0;
+    f_cycle_status = CYCLE_INVALID;
     //handle branching and stalls 
     if(load_use_stall || fence_stall || div_stall)begin
       //f_insn_branch = f_insn;
@@ -619,26 +619,37 @@ module DatapathAxilMemory (
   logic [`OPCODE_SIZE] d_opcode;
   logic [4:0] d_insn_rs1;
   logic [4:0] d_insn_rs2;
+  cycle_status_e d1_cycle_status;
   cycle_status_e d_cycle_status;
   stage_decode_t decode_state;
+
+  always_ff @(posedge clk)begin
+    if(rst)begin
+      d1_cycle_status <= CYCLE_RESET; 
+    end 
+    else begin 
+      d1_cycle_status <= CYCLE_NO_STALL;
+    end 
+  end 
 
   always_comb begin
     insn_buffer = 32'b0;
     decode_state = 0; 
-    decode_state.cycle_status = CYCLE_NO_STALL;
-    if(load_use_stall)begin 
-        // stall for a cycle
-        decode_state.cycle_status = CYCLE_LOAD2USE;
-    end 
-    else if(div_stall)begin
-      // stall for a cycle
-      decode_state.cycle_status = CYCLE_DIV2USE;
-    end
-    else if(fence_stall)begin
-      // stall for a cycle        
-      decode_state.cycle_status = CYCLE_FENCE;
-    end
-    else if(branch_taken || m_branch_taken)begin
+    decode_state.cycle_status = d1_cycle_status;
+    // if(load_use_stall)begin 
+    //     // stall for a cycle
+    //     //decode_state.cycle_status = CYCLE_LOAD2USE;
+    // end 
+    // else if(div_stall)begin
+    //   // stall for a cycle
+    //   //decode_state.cycle_status = CYCLE_DIV2USE;
+    // end
+    // else if(fence_stall)begin
+    //   // stall for a cycle        
+    //   //decode_state.cycle_status = CYCLE_FENCE;
+    // end
+    // else 
+    if(branch_taken || m_branch_taken)begin
       decode_state = 0;
       decode_state.cycle_status = CYCLE_TAKEN_BRANCH; 
     end 
@@ -651,11 +662,11 @@ module DatapathAxilMemory (
           opcode: insn_buffer[6:0],
           insn_rs1: insn_buffer[19:15],
           insn_rs2: insn_buffer[24:20],
-          cycle_status: CYCLE_NO_STALL
+          cycle_status: d1_cycle_status
         };
       end 
       else begin 
-      end 
+      end  
     end 
   end 
   assign d_insn = decode_state.insn;
