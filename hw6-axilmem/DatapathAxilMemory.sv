@@ -190,6 +190,19 @@ module MemoryAxiLite #(
         insn_read_bus <= Read_Insn; 
         data_read_bus <= Read_Address;
       end 
+      else if(insn.ARREADY && insn.ARVALID && data.AWREADY && data.AWVALID)begin // manager has requested a data write and insn read
+        insn_address_buffer <= insn.ARADDR;
+        insn_read_bus <= Read_Insn;
+        address_buffer <= data.AWADDR;                  
+        if(data.WREADY && data.WVALID) begin
+          write_data_buffer <= data.WDATA;
+          write_we <= data.WSTRB;
+          write_bus <= Write_Address;                  
+        end 
+        else begin
+          write_bus <= Write_Idle;
+        end 
+      end 
       else if(data.ARREADY && data.ARVALID)begin      // manager has requested a data read at an address 
         data_address_buffer <= data.ARADDR;           // store the address while its valid
         data_read_bus <= Read_Address;                
@@ -587,13 +600,13 @@ module DatapathAxilMemory (
         // adjust the pc to go back 3 clock cycles or 12 in decimal value 
         f_pc_current <= branch_pc;
       end 
-      // else if(load_use_stall)begin 
-      //   // stall for a cycle as load use in pipeline
-      // end  
+      else if(load_use_stall)begin 
+        // stall for a cycle as load use in pipeline
+      end  
       else if(fence_stall)begin 
       end
-      // else if(div_stall)begin 
-      // end
+      else if(div_stall)begin 
+      end
       else begin // normal operation 
         f_pc_current <= f_pc_current + 32'd4;
         imem.ARVALID <= 1'b1;
@@ -1105,6 +1118,13 @@ module DatapathAxilMemory (
     address_intermediate = 32'b0;
     dmem.ARADDR = 32'b0;
     dmem.ARVALID = 1'b0;
+    dmem.AWVALID = 1'b0;
+    dmem.ARADDR = 32'b0;
+    dmem.WDATA = 32'b0;
+    dmem.AWADDR = 32'b0;
+    dmem.WSTRB = 4'b0;
+    dmem.WVALID = 1'b0;
+    dmem.BREADY = 1'b0;
     load_store = 1'b0;
     wm_bypass = 1'b0;
 
@@ -1294,8 +1314,41 @@ module DatapathAxilMemory (
       load_store = 1'b1;
       address_intermediate = $signed(x_operand1)  + $signed(x_imm);
       address_datamemory = (address_intermediate & 32'hFFFF_FFFC);
-      dmem.ARADDR = (address_intermediate & 32'hFFFF_FFFC); 
-      dmem.ARVALID = 1'b1;  
+      dmem.AWADDR = (address_intermediate & 32'hFFFF_FFFC);
+      dmem.AWVALID = 1'b1;
+      if(x_insn[14:12] == 3'b000)begin //sb
+        dmem.WDATA = {{4{x_operand2[7:0]}}};
+        if(address_intermediate[1:0] == 2'b00) begin
+          dmem.WSTRB = 4'b0001;
+        end
+        else if(address_intermediate[1:0] == 2'b01)begin
+          dmem.WSTRB = 4'b0010;
+        end
+        else if(address_intermediate[1:0] == 2'b10) begin 
+          dmem.WSTRB = 4'b0100;
+        end
+        else begin
+          dmem.WSTRB = 4'b1000; 
+        end 
+      end
+      else if(x_insn[14:12] == 3'b001)begin // sh
+        dmem.WDATA = {{2{x_operand2[15:0]}}};
+        if(address_intermediate[1:0] == 2'b00) begin
+          dmem.WSTRB = 4'b0011;
+        end
+        else begin 
+          dmem.WSTRB = 4'b1100;
+        end 
+      end 
+      else if(x_insn[14:12] == 3'b010)begin //sw
+        dmem.WDATA = $signed(x_operand2);
+        dmem.WSTRB = 4'b1111;
+      end 
+      else begin 
+        execute_result = 32'b0;
+      end 
+      dmem.WVALID = 1'b1; 
+      dmem.BREADY = 1'b1;   
     end 
     OpcodeBranch: begin
       if(x_insn[14:12] == 3'b000 )begin //beq
@@ -1372,15 +1425,6 @@ module DatapathAxilMemory (
       wm_bypass = 1'b0;
     end 
   end 
-
-  // always_ff @(posedge clk)begin
-  //   if(load_store)begin
-  //     dmem.ARVALID <= 1'b1; 
-  //   end 
-  //   else begin
-  //     dmem.ARVALID <= 1'b0; 
-  //   end
-  // end 
 
   //*********fix this 
   cla a1(.a(cla_a),
@@ -1573,37 +1617,38 @@ module DatapathAxilMemory (
     end
     OpcodeStore: begin
       // implemented store here 
-      if(m_insn[14:12] == 3'b000)begin //sb
-        store_data = {{4{m_operand2[7:0]}}};
-        if(m_address_intermediate[1:0] == 2'b00) begin
-          datamem_we = 4'b0001;
-        end
-        else if(m_address_intermediate[1:0] == 2'b01)begin
-          datamem_we = 4'b0010;
-        end
-        else if(m_address_intermediate[1:0] == 2'b10) begin 
-          datamem_we = 4'b0100;
-        end
-        else begin
-          datamem_we = 4'b1000; 
-        end 
-      end
-      else if(m_insn[14:12] == 3'b001)begin // sh
-        store_data = {{2{m_operand2[15:0]}}};
-        if(m_address_intermediate[1:0] == 2'b00) begin
-          datamem_we = 4'b0011;
-        end
-        else begin 
-          datamem_we = 4'b1100;
-        end 
-      end 
-      else if(m_insn[14:12] == 3'b010)begin //sw
-        store_data = $signed(m_operand2);
-        datamem_we = 4'b1111;
-      end 
-      else begin 
-        m_result =  32'b0;
-      end 
+      // if(m_insn[14:12] == 3'b000)begin //sb
+      //   store_data = {{4{m_operand2[7:0]}}};
+      //   if(m_address_intermediate[1:0] == 2'b00) begin
+      //     datamem_we = 4'b0001;
+      //   end
+      //   else if(m_address_intermediate[1:0] == 2'b01)begin
+      //     datamem_we = 4'b0010;
+      //   end
+      //   else if(m_address_intermediate[1:0] == 2'b10) begin 
+      //     datamem_we = 4'b0100;
+      //   end
+      //   else begin
+      //     datamem_we = 4'b1000; 
+      //   end 
+      // end
+      // else if(m_insn[14:12] == 3'b001)begin // sh
+      //   store_data = {{2{m_operand2[15:0]}}};
+      //   if(m_address_intermediate[1:0] == 2'b00) begin
+      //     datamem_we = 4'b0011;
+      //   end
+      //   else begin 
+      //     datamem_we = 4'b1100;
+      //   end 
+      // end 
+      // else if(m_insn[14:12] == 3'b010)begin //sw
+      //   store_data = $signed(m_operand2);
+      //   datamem_we = 4'b1111;
+      // end 
+      // else begin 
+      //   m_result =  32'b0;
+      // end 
+      m_result = 32'b0;
     end  
     default: begin 
         if((m_div_insn == 4'b0001) )begin //div 
