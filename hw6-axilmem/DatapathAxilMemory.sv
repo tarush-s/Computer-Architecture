@@ -572,13 +572,14 @@ module DatapathAxilMemory (
     if (rst) begin
       f_pc_current <= 32'd0;
       // NB: use CYCLE_NO_STALL since this is the value that will persist after the last reset cycle
-      //  f_cycle_status <= CYCLE_NO_STALL;
+      f_cycle_status <= CYCLE_NO_STALL;
       imem.RREADY <= 1'b1;
       //imem.ARVALID <= 1'b0;
     end else begin
       if(branch_taken)begin // branch is not taken
         // adjust the pc to go back 3 clock cycles or 12 in decimal value 
         f_pc_current <= branch_pc;
+        f_cycle_status <= CYCLE_TAKEN_BRANCH;
         imem.ARVALID <= 1'b1;
       end 
       else if(load_use_stall || fence_stall || div_stall)begin 
@@ -588,28 +589,20 @@ module DatapathAxilMemory (
       else begin // branch is takken 
         f_pc_current <= f_pc_current + 32'd4; 
         imem.ARVALID <= 1'b1;
+        f_cycle_status <= CYCLE_NO_STALL;
       end 
     end
   end
-  
-  // comb logic only to send request to subordinate and set the cycle status 
+
   always_comb begin
     imem.ARADDR = 32'b0;
-    f_cycle_status = CYCLE_NO_STALL;
-
-    if(load_use_stall)begin
-      f_cycle_status = CYCLE_LOAD2USE;
-    end 
-    else if(fence_stall)begin 
-      f_cycle_status = CYCLE_FENCE;
-    end 
-    else if(div_stall)begin 
-      f_cycle_status = CYCLE_DIV2USE;
+    //handle branching and stalls 
+    if(load_use_stall || fence_stall || div_stall)begin
+      //f_insn_branch = f_insn;
     end 
     else begin
       if(imem.ARREADY)begin
         imem.ARADDR = f_pc_current;
-        f_cycle_status = CYCLE_NO_STALL;
       end 
       else begin 
       end 
@@ -631,87 +624,40 @@ module DatapathAxilMemory (
 
   always_comb begin
     insn_buffer = 32'b0;
-    if(imem.RVALID)begin
-      insn_buffer = imem.RDATA;
-    end
-    // decode_state = 0;
-    //   if(load_use_stall)begin 
-    //      // stall for a cycle
-    //      decode_state.cycle_status = CYCLE_LOAD2USE;
-    //   end 
-    //   else if(div_stall)begin
-    //     // stall for a cycle
-    //     decode_state.cycle_status = CYCLE_DIV2USE;
-    //   end
-    //   else if(fence_stall)begin
-    //     // stall for a cycle        
-    //     decode_state.cycle_status = CYCLE_FENCE;
-    //   end
-    //   else if(branch_taken)begin
-    //     decode_state = 0;
-    //     decode_state.cycle_status = CYCLE_TAKEN_BRANCH; 
-    //   end 
-    //   else begin 
-    //     if(imem.RVALID)begin
-    //       insn_buffer = imem.RDATA;
-    //         decode_state = '{
-    //         pc: f_pc_current,
-    //         insn: insn_buffer,
-    //         opcode: insn_buffer[6:0],
-    //         insn_rs1: insn_buffer[19:15],
-    //         insn_rs2: insn_buffer[24:20],
-    //         cycle_status: CYCLE_NO_STALL
-    //       };
-    //     end 
-    //     else begin 
-    //     end 
-    //   end 
+    decode_state = 0; 
+    decode_state.cycle_status = CYCLE_NO_STALL;
+    if(load_use_stall)begin 
+        // stall for a cycle
+        decode_state.cycle_status = CYCLE_LOAD2USE;
     end 
-  // this shows how to package up state in a `struct packed`, and how to pass it between stages
-
-  always_ff @(posedge clk) begin
-    if (rst) begin
-      decode_state <= '{
-        pc: 0,
-        insn: 0,
-        opcode: 0,
-        insn_rs1: 0,
-        insn_rs2: 0,
-        cycle_status: CYCLE_RESET
-      };
+    else if(div_stall)begin
+      // stall for a cycle
+      decode_state.cycle_status = CYCLE_DIV2USE;
+    end
+    else if(fence_stall)begin
+      // stall for a cycle        
+      decode_state.cycle_status = CYCLE_FENCE;
+    end
+    else if(branch_taken || m_branch_taken)begin
+      decode_state = 0;
+      decode_state.cycle_status = CYCLE_TAKEN_BRANCH; 
     end 
     else begin 
-      if(load_use_stall)begin 
-        // stall for a cycle
-      end 
-      else if(div_stall)begin 
-        // stall for a cycle
-      end
-      else if(fence_stall)begin
-        // stall for a cycle 
-      end
-      else if(branch_taken)begin
-        // flush the pipeline when a branch is found 
-        decode_state <= 0;
-        decode_state.cycle_status <= CYCLE_TAKEN_BRANCH; 
-      end 
-      else begin
-        //decode_state <= decode_state_buffer;
-        if(imem.RVALID)begin
-          decode_state <= '{
-          pc: f_pc_current,
+      if(imem.RVALID)begin
+        insn_buffer = imem.RDATA;
+          decode_state = '{
+          pc: f_pc_current - 32'd4,
           insn: insn_buffer,
           opcode: insn_buffer[6:0],
           insn_rs1: insn_buffer[19:15],
           insn_rs2: insn_buffer[24:20],
-          cycle_status: f_cycle_status
+          cycle_status: CYCLE_NO_STALL
         };
-        end
-        else begin 
-        end
+      end 
+      else begin 
       end 
     end 
-  end
+  end 
   assign d_insn = decode_state.insn;
   assign d_pc_current = decode_state.pc;
   assign d_insn_rs1 = decode_state.insn_rs1;
@@ -880,10 +826,10 @@ module DatapathAxilMemory (
     OpcodeMiscMem: begin
       //fence instruction stall signa is triggered 
       if((x_opcode_comb == OpcodeStore) || (m_opcode == OpcodeStore))begin 
-        fence_stall = 1'b1;
-      end 
-      else begin 
-        fence_stall = 1'b0;
+      //   fence_stall = 1'b1;
+      // end 
+      // else begin 
+      //   fence_stall = 1'b0;
      end 
     end 
     OpcodeEnviron: begin
@@ -894,26 +840,26 @@ module DatapathAxilMemory (
     end 
     endcase
  
-    if((div) && ((d_insn_rs1 == x_insn_rd) || (d_insn_rs2 == x_insn_rd)))begin 
-      // the cycle after the system stall, div has got cirrect result in the execute stage 
-      div_stall = 1'b1;
-    end 
-    else begin 
-      div_stall = 1'b0;
-    end 
+    // if((div) && ((d_insn_rs1 == x_insn_rd) || (d_insn_rs2 == x_insn_rd)))begin 
+    //   // the cycle after the system stall, div has got cirrect result in the execute stage 
+    //   div_stall = 1'b1;
+    // end 
+    // else begin 
+    //   div_stall = 1'b0;
+    // end 
 
-    //Hazard detection
-    // load use bypass and stall 
-    if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (d_opcode != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui)) || ((insn_rs2 == x_insn_rd) && (d_opcode != OpcodeLoad) && (d_opcode != OpcodeStore) && (insn_rs2 != 5'b0) && (d_opcode != OpcodeRegImm) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))) && (x_opcode_comb == OpcodeLoad))begin
-      load_use_stall = 1'b1;
-    end
-    // this is done wa address bypass and stall 
-    else if((x_opcode == OpcodeLoad) && (d_opcode == OpcodeStore) && (insn_rs1 == x_insn_rd) && (x_insn_rd != 5'b0))begin
-      load_use_stall = 1'b1;
-    end 
-    else begin
-      load_use_stall = 1'b0;
-    end 
+    // //Hazard detection
+    // // load use bypass and stall 
+    // if((((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (d_opcode != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui)) || ((insn_rs2 == x_insn_rd) && (d_opcode != OpcodeLoad) && (d_opcode != OpcodeStore) && (insn_rs2 != 5'b0) && (d_opcode != OpcodeRegImm) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal))) && (x_opcode_comb == OpcodeLoad))begin
+    //   load_use_stall = 1'b1;
+    // end
+    // // this is done wa address bypass and stall 
+    // else if((x_opcode == OpcodeLoad) && (d_opcode == OpcodeStore) && (insn_rs1 == x_insn_rd) && (x_insn_rd != 5'b0))begin
+    //   load_use_stall = 1'b1;
+    // end 
+    // else begin
+    //   load_use_stall = 1'b0;
+    // end 
     // dont trigger branch when the instruction in the x stage is a branch instruction or a load instruction or a store instruction
     if((insn_rs1 == x_insn_rd) && (insn_rs1 != 5'b0) && (insn_rs2 == x_insn_rd) && (insn_rs2 != 5'b0) && (x_opcode_comb != OpcodeBranch) && (x_opcode_comb != OpcodeLoad)  && (x_opcode_comb != OpcodeStore) && (d_opcode != OpcodeAuipc) && (d_opcode != OpcodeLui) && (d_opcode != OpcodeJal) && (d_opcode != OpcodeJalr))begin
       mx_rs1_bypass = 1'b1;
